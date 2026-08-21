@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ArrowUpRight, Check, CircleDot, Compass, Globe2, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -18,7 +17,7 @@ export function LandingPage() {
     <div className="relative overflow-hidden">
       <div className="shell-grid pointer-events-none absolute inset-0 -z-10 h-[680px]" />
       <section className="mx-auto grid max-w-7xl items-center gap-14 px-5 pb-24 pt-20 sm:px-8 lg:grid-cols-[1.02fr_.98fr] lg:gap-20 lg:px-10 lg:pb-32 lg:pt-28">
-        <motion.div initial={false}>
+        <div>
           <Badge tone="accent"><Sparkles size={12} />{t("eyebrow")}</Badge>
           <h1 className="display mt-7 max-w-3xl text-balance text-[clamp(3.2rem,7vw,6.6rem)] font-black text-[var(--ink)]">{t("title")}</h1>
           <p className="mt-7 max-w-xl text-lg leading-8 text-[var(--muted)]">{t("subtitle")}</p>
@@ -31,9 +30,9 @@ export function LandingPage() {
             <span className="flex items-center gap-2"><CircleDot size={15} className="text-[var(--accent)]" />{t("deterministic")}</span>
             <span className="flex items-center gap-2"><Globe2 size={15} className="text-[var(--amber)]" />{t("europeFocused")}</span>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div initial={false} whileHover={{ y: -2 }} transition={{ duration: 0.2 }} className="relative">
+        <div className="relative transition-transform duration-200 hover:-translate-y-0.5">
           <div className="absolute -inset-5 rounded-[3rem] bg-[var(--accent)]/10 blur-3xl" />
           <div className="relative overflow-hidden rounded-[2rem] border border-[var(--line)] bg-[var(--card)] p-3 card-shadow">
             <div className="rounded-[1.35rem] border border-[var(--line)] bg-[var(--paper)] p-5 sm:p-7">
@@ -69,7 +68,7 @@ export function LandingPage() {
             <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">{t("signalQuality")}</p>
             <p className="mt-1 text-xl font-black text-[var(--ink)]">{t("evidenceFirst")}</p>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       <section className="border-y border-[var(--line)] bg-[var(--card)]">
@@ -112,10 +111,10 @@ function PreviewRow({ title, value, tone, progress, locale }: { title: string; v
 
 function Step({ number, icon, body }: { number: string; icon: React.ReactNode; body: string }) {
   return (
-    <motion.div whileHover={{ y: -4 }} className="rounded-3xl border border-[var(--line)] bg-[var(--paper)] p-5">
+    <div className="rounded-3xl border border-[var(--line)] bg-[var(--paper)] p-5 transition-transform duration-200 hover:-translate-y-1">
       <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">{icon}</div>
       <p className="mt-6 text-[11px] font-bold uppercase tracking-[.12em] text-[var(--accent)]">{number}</p>
       <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{body}</p>
-    </motion.div>
+    </div>
   );
 }
