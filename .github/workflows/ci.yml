@@ -165,6 +165,8 @@ jobs:
           cache: pip
       - name: Install backend
         run: python -m pip install -e ".[dev,postgres]"
+      - name: Validate every configured production ATS feed is live
+        run: python scripts/live_source_catalog_check.py
       - name: Migrate live-test database
         run: alembic upgrade head
       - name: Ingest public ATS feeds twice and validate freshness/idempotency/API
