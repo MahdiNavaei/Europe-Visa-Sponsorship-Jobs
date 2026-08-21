@@ -4,9 +4,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { BriefcaseBusiness, Building2, ChevronDown, Compass, Languages, Menu, Moon, Settings, Sparkles, Sun, UserRound, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils/cn";
@@ -19,9 +18,7 @@ const links = [
 ] as const;
 
 function ThemeToggle() {
-  useTheme();
   const [isDark, setIsDark] = useState(false);
-  useEffect(() => { setIsDark(document.documentElement.classList.contains("dark")); }, []);
   const toggle = () => { const nextDark = !document.documentElement.classList.contains("dark"); document.documentElement.classList.toggle("dark", nextDark); window.localStorage.setItem("theme", nextDark ? "dark" : "light"); setIsDark(nextDark); };
   return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={toggle} title="Toggle theme">{isDark ? <Sun size={17} /> : <Moon size={17} />}</button>;
 }
