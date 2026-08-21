@@ -13,12 +13,6 @@
   },
   {
     "provider": "greenhouse",
-    "company_name": "Pleo",
-    "slug": "pleo",
-    "careers_url": "https://www.pleo.io/en/careers"
-  },
-  {
-    "provider": "greenhouse",
     "company_name": "Atolls",
     "slug": "atolls",
     "careers_url": "https://www.atolls.com/careers"
