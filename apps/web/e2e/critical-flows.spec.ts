@@ -64,6 +64,7 @@ test("onboarding creates a profile and loads the dashboard shortlist", async ({ 
 
 test("job filters and detail page use the typed API surface", async ({ page }) => {
   const job = { id: 7, company_id: 3, external_id: "demo-7", provider: "greenhouse", source_slug: "demo", company_name: "Northstar Labs", title: "Senior AI Engineer", description: "Visa sponsorship.", location: "Berlin, Germany", country: "Germany", department: null, employment_type: "Full time", workplace_type: "Hybrid", apply_url: "https://example.invalid/apply", job_url: null, posted_at: "2026-01-01T00:00:00Z", job_family: "ai_ml", required_skills: ["Python"], preferred_skills: [], min_experience_years: 4, seniority: "senior", eligibility_status: "eligible", eligibility_score: 94 };
+  page.on("response", (response) => { if (response.url().includes("/api/v1/")) console.log(`API ${response.status()} ${response.url()}`); });
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/v1/jobs")) return route.continue();

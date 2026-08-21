@@ -16,7 +16,7 @@ export function Providers({ locale, children }: { locale: Locale; children: Reac
   return (
     <NextIntlClientProvider locale={locale} messages={messages[locale]} timeZone="UTC">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="light" disableTransitionOnChange>
           {children}
         </ThemeProvider>
       </QueryClientProvider>
