@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-visa_jobs}
       POSTGRES_USER: ${POSTGRES_USER:-visa_jobs}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-visa_jobs_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting the production stack}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-visa_jobs} -d ${POSTGRES_DB:-visa_jobs}"]
       interval: 5s
@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-visa_jobs}:${POSTGRES_PASSWORD:-visa_jobs_change_me}@postgres:5432/${POSTGRES_DB:-visa_jobs}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-visa_jobs}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting the production stack}@postgres:5432/${POSTGRES_DB:-visa_jobs}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
