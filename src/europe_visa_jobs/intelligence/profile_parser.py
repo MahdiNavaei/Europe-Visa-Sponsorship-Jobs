@@ -44,4 +44,7 @@ class CandidateProfileParser:
         for country, aliases in COUNTRY_ALIASES.items():
             if any(re.search(rf"(?<![\w]){re.escape(alias)}(?![\w])", text, re.IGNORECASE) for alias in aliases):
                 found.append(country)
-        return found or ([infer_country(text)] if infer_country(text) else [])
+        if found:
+            return found
+        inferred = infer_country(text)
+        return [inferred] if inferred else []
