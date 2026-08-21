@@ -247,6 +247,24 @@ pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
 
 CI also runs compilation, Ruff, and the coverage gate on pushes and pull requests.
 
+## Phase 2 status
+
+**Phase 2 — Candidate Intelligence & Matching Engine: implemented.**
+
+Implemented:
+
+- Candidate profile persistence and validation
+- Target roles, canonical skills, experience, seniority, country, visa, relocation, remote, and exclusion preferences
+- Deterministic skill ontology with aliases, categories, and explainable extraction
+- Required/preferred job skill analysis and experience/seniority extraction
+- Candidate-specific visa, skill, role, experience, country, and company matching
+- Configurable 35/30/15/10/10 recommendation ranking
+- Company friendliness scoring from Phase 1 sponsor and vacancy evidence
+- Explainable recommendation and detailed explanation endpoints
+- Fixture-backed ranking regression tests for Phase 2
+
+See [`docs/PHASE_2.md`](docs/PHASE_2.md) for the matching architecture, scoring formula, and API examples.
+
 ## Current job families
 
 - Software Engineering

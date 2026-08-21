@@ -1,4 +1,4 @@
-# Phase 1 Architecture
+# Phase 1–2 Architecture
 
 ## Design goals
 
@@ -18,6 +18,7 @@ src/europe_visa_jobs/
 ├── connectors/     ATS-specific public feed adapters
 ├── db/             SQLAlchemy models, session, repository
 ├── eligibility/    country rules, sponsor evidence, signal detector, engine
+├── intelligence/   skill ontology, job analysis, matching, ranking, company scoring
 ├── ingestion/      source loading, sponsor import, ingestion pipeline, CLI
 ├── utils/          text, country and role normalization
 ├── schemas.py      shared Pydantic domain models
@@ -102,6 +103,10 @@ Tables:
 - `jobs`
 - `job_evidence`
 - `ingestion_runs`
+- `candidates`
+
+Phase 2 adds persisted job intelligence fields (`required_skills`, `preferred_skills`, minimum
+experience, and seniority) while retaining runtime analysis for legacy rows.
 
 The unique job identity is:
 

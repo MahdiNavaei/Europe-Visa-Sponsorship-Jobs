@@ -58,3 +58,12 @@ def infer_country(location: str | None, default: str | None = None) -> str | Non
         if city in lowered:
             return country
     return default
+
+
+def normalize_country(value: str) -> str:
+    """Return the canonical country label when a known alias is supplied."""
+    cleaned = re.sub(r"\s+", " ", value.strip()).casefold()
+    for country, aliases in COUNTRY_ALIASES.items():
+        if cleaned == country.casefold() or cleaned in {alias.casefold() for alias in aliases}:
+            return country
+    return value.strip()

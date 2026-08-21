@@ -11,11 +11,16 @@ from europe_visa_jobs import __version__
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db, init_db
 from europe_visa_jobs.eligibility import CountryRulesRegistry
+from europe_visa_jobs.intelligence.ranking import JobRecommendation, RankingEngine
 from europe_visa_jobs.schemas import (
+    CandidateCreate,
+    CandidateRead,
     CompanyRead,
     EligibilityStatus,
     JobDetailRead,
     JobRead,
+    JobRecommendationRead,
+    RecommendationExplanationRead,
     StatsRead,
 )
 
@@ -86,6 +91,96 @@ def list_companies(
 @app.get("/api/v1/stats", response_model=StatsRead)
 def stats(session: SessionDep) -> StatsRead:
     return StatsRead.model_validate(Repository(session).stats())
+
+
+def _recommendation_read(item: JobRecommendation) -> JobRecommendationRead:
+    match = item.match
+    return JobRecommendationRead(
+        job_id=item.job.id,
+        total_score=item.total_score,
+        visa_score=round(match.visa_score * 100, 2),
+        skill_score=round(match.skill_score, 2),
+        skill_match=round(match.skill_score / 100, 4),
+        experience_score=round(match.experience_score, 2),
+        country_score=round(match.country_score * 100, 2),
+        company_score=round(match.company_score, 2),
+        required_skill_coverage=round(match.required_skill_coverage, 4),
+        preferred_skill_coverage=round(match.preferred_skill_coverage, 4),
+        seniority_match=round(match.seniority_match, 4),
+        role_similarity=round(match.role_similarity, 4),
+        matched_skills=match.matched_skills,
+        missing_skills=match.missing_skills,
+        missing_preferred_skills=match.missing_preferred_skills,
+        reasons=match.reasons,
+        warnings=match.warnings,
+        explanation=[*match.reasons, *match.warnings],
+        job=JobRead.model_validate(item.job),
+    )
+
+
+@app.post("/api/v1/candidates", response_model=CandidateRead, status_code=201)
+@app.post("/candidates", response_model=CandidateRead, status_code=201, include_in_schema=False)
+def create_candidate(candidate: CandidateCreate, session: SessionDep) -> CandidateRead:
+    item = Repository(session).create_candidate(candidate)
+    session.commit()
+    return CandidateRead.model_validate(item)
+
+
+@app.get("/api/v1/candidates/{candidate_id}", response_model=CandidateRead)
+@app.get("/candidates/{candidate_id}", response_model=CandidateRead, include_in_schema=False)
+def get_candidate(candidate_id: int, session: SessionDep) -> CandidateRead:
+    item = Repository(session).get_candidate(candidate_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return CandidateRead.model_validate(item)
+
+
+def _recommendations(
+    candidate_id: int,
+    session: Session,
+    *,
+    limit: int,
+    include_unknown: bool,
+) -> list[JobRecommendationRead]:
+    repo = Repository(session)
+    candidate = repo.get_candidate(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    engine = RankingEngine()
+    jobs = repo.list_recommendation_jobs(include_unknown=include_unknown)
+    return [_recommendation_read(item) for item in engine.recommend(candidate, jobs, limit=limit)]
+
+
+@app.get("/api/v1/recommendations/{candidate_id}", response_model=list[JobRecommendationRead])
+@app.get("/recommendations/{candidate_id}", response_model=list[JobRecommendationRead], include_in_schema=False)
+def recommendations(
+    candidate_id: int,
+    session: SessionDep,
+    limit: int = Query(default=50, ge=1, le=500),
+    include_unknown: bool = False,
+) -> list[JobRecommendationRead]:
+    return _recommendations(candidate_id, session, limit=limit, include_unknown=include_unknown)
+
+
+@app.get("/api/v1/recommendations/{candidate_id}/explain", response_model=RecommendationExplanationRead)
+@app.get("/recommendations/{candidate_id}/explain", response_model=RecommendationExplanationRead, include_in_schema=False)
+def explain_recommendations(
+    candidate_id: int,
+    session: SessionDep,
+    limit: int = Query(default=50, ge=1, le=500),
+    include_unknown: bool = False,
+) -> RecommendationExplanationRead:
+    repo = Repository(session)
+    candidate = repo.get_candidate(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    engine = RankingEngine()
+    recommendations = engine.recommend(candidate, repo.list_recommendation_jobs(include_unknown=include_unknown), limit=limit)
+    return RecommendationExplanationRead(
+        candidate=CandidateRead.model_validate(candidate),
+        weights=engine.config.as_dict(),
+        recommendations=[_recommendation_read(item) for item in recommendations],
+    )
 
 
 def run() -> None:  # pragma: no cover
