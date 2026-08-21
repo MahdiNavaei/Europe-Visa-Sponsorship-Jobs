@@ -45,18 +45,18 @@ The project is intentionally divided into four delivery phases.
 
 ## Phase 3 — Professional UI/UX
 
-- [ ] Product design system
-- [ ] Responsive public landing page
-- [ ] Candidate onboarding flow
-- [ ] Professional job discovery dashboard
-- [ ] Search, filters, sort, and empty/loading/error states
-- [ ] Visa-evidence visualization
-- [ ] Job detail experience
-- [ ] Company intelligence page
-- [ ] Candidate profile/settings UX
-- [ ] Accessibility review
-- [ ] Mobile/tablet/desktop responsive behavior
-- [ ] UX polish and interaction states
+- [x] Product design system
+- [x] Responsive public landing page
+- [x] Candidate onboarding flow
+- [x] Professional job discovery dashboard
+- [x] Search, filters, sort, and empty/loading/error states
+- [x] Visa-evidence visualization
+- [x] Job detail experience
+- [x] Company intelligence page
+- [x] Candidate profile/settings UX
+- [x] Accessibility review
+- [x] Mobile/tablet/desktop responsive behavior
+- [x] UX polish and interaction states
 
 ## Phase 4 — Full Testing, Integration & E2E Hardening
 
