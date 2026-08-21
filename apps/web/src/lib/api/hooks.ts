@@ -13,19 +13,23 @@ export function useCountries() {
 }
 
 export function useJobs(params: URLSearchParams) {
-  return useQuery({
-    queryKey: ["jobs", params.toString()],
-    queryFn: () => api.listJobs(params),
-    staleTime: 30_000,
-  });
+  return useQuery({ queryKey: ["jobs", params.toString()], queryFn: () => api.listJobs(params), staleTime: 30_000 });
+}
+
+export function useJobsPage(params: URLSearchParams) {
+  return useQuery({ queryKey: ["jobs-page", params.toString()], queryFn: () => api.listJobsPage(params), staleTime: 30_000 });
 }
 
 export function useJob(id: number) {
-  return useQuery({ queryKey: ["job", id], queryFn: () => api.getJob(id), enabled: Number.isFinite(id) });
+  return useQuery({ queryKey: ["job", id], queryFn: () => api.getJob(id), enabled: Number.isFinite(id) && id > 0 });
 }
 
 export function useCompanies(country?: string) {
   return useQuery({ queryKey: ["companies", country], queryFn: () => api.listCompanies(country), staleTime: 60_000 });
+}
+
+export function useCompany(id: number) {
+  return useQuery({ queryKey: ["company", id], queryFn: () => api.getCompany(id), enabled: Number.isFinite(id) && id > 0 });
 }
 
 export function useCandidate(id: number | null) {
@@ -41,6 +45,37 @@ export function useRecommendations(id: number | null, params: URLSearchParams) {
   });
 }
 
+export function useRecommendationsPage(id: number | null, params: URLSearchParams) {
+  return useQuery({
+    queryKey: ["recommendations-page", id, params.toString()],
+    queryFn: () => api.getRecommendationsPage(id as number, params),
+    enabled: id !== null,
+    staleTime: 30_000,
+  });
+}
+
+export function useJobRecommendation(candidateId: number | null, jobId: number) {
+  return useQuery({
+    queryKey: ["job-recommendation", candidateId, jobId],
+    queryFn: () => api.getJobRecommendation(candidateId as number, jobId),
+    enabled: candidateId !== null && Number.isFinite(jobId) && jobId > 0,
+    staleTime: 30_000,
+  });
+}
+
+export function useRecommendationExplanation(candidateId: number | null, params: URLSearchParams) {
+  return useQuery({
+    queryKey: ["recommendation-explanation", candidateId, params.toString()],
+    queryFn: () => api.explainRecommendations(candidateId as number, params),
+    enabled: candidateId !== null,
+    staleTime: 30_000,
+  });
+}
+
 export function useCreateCandidate() {
   return useMutation({ mutationFn: (input: CandidateInput) => api.createCandidate(input) });
+}
+
+export function useUpdateCandidate() {
+  return useMutation({ mutationFn: ({ id, input }: { id: number; input: CandidateInput }) => api.updateCandidate(id, input) });
 }

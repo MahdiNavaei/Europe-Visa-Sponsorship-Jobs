@@ -13,6 +13,11 @@ export type JobFamily =
   | "qa_automation"
   | "other";
 
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+}
+
 export interface Job {
   id: number;
   company_id: number;
@@ -59,6 +64,16 @@ export interface Company {
   country: string | null;
   career_url: string | null;
   sponsor_verified: boolean;
+}
+
+export interface CompanyIntelligence {
+  company: Company;
+  visa_friendliness_score: number;
+  positive_signals: string[];
+  negative_signals: string[];
+  active_jobs: number;
+  eligible_jobs: number;
+  jobs: Job[];
 }
 
 export interface Stats {
