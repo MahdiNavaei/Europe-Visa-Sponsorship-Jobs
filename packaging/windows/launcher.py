@@ -137,6 +137,8 @@ class RuntimeServices:
             port=API_PORT,
             log_level="warning",
             access_log=False,
+            loop="asyncio",
+            http="h11",
         )
         self.api_server = uvicorn.Server(config)
         self.api_thread = threading.Thread(target=self.api_server.run, daemon=True, name="career-radar-api")
