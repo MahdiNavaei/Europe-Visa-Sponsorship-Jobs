@@ -1,0 +1,16 @@
+import { z } from "zod";
+
+export const candidateSchema = z.object({
+  name: z.string().trim().min(1, "Please enter your name"),
+  target_roles: z.array(z.string()).min(1, "Choose at least one role"),
+  skills: z.array(z.string()),
+  years_of_experience: z.number().min(0).max(60),
+  seniority: z.string().nullable(),
+  preferred_countries: z.array(z.string()),
+  visa_required: z.boolean(),
+  relocation_preference: z.string(),
+  remote_preference: z.string(),
+  excluded_locations: z.array(z.string()),
+});
+
+export type CandidateFormValues = z.infer<typeof candidateSchema>;

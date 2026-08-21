@@ -160,6 +160,10 @@ class Repository:
         country: str | None = None,
         status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
         job_family: str | None = None,
+        company_id: int | None = None,
+        query: str | None = None,
+        min_eligibility_score: float | None = None,
+        sort: str = "newest",
         limit: int = 100,
         offset: int = 0,
     ) -> list[Job]:
@@ -170,8 +174,61 @@ class Repository:
             stmt = stmt.where(Job.eligibility_status == status.value)
         if job_family:
             stmt = stmt.where(Job.job_family == job_family)
-        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit).offset(offset)
+        if company_id is not None:
+            stmt = stmt.where(Job.company_id == company_id)
+        if query and query.strip():
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Job.title.ilike(pattern),
+                    Job.company_name.ilike(pattern),
+                    Job.description.ilike(pattern),
+                )
+            )
+        if min_eligibility_score is not None:
+            stmt = stmt.where(Job.eligibility_score >= min_eligibility_score)
+        if sort == "visa":
+            stmt = stmt.order_by(
+                Job.eligibility_score.desc().nullslast(),
+                Job.posted_at.desc().nullslast(),
+                Job.id.desc(),
+            )
+        else:
+            stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+        stmt = stmt.limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
+
+    def count_jobs(
+        self,
+        *,
+        country: str | None = None,
+        status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+        job_family: str | None = None,
+        company_id: int | None = None,
+        query: str | None = None,
+        min_eligibility_score: float | None = None,
+    ) -> int:
+        stmt = select(func.count(Job.id)).where(Job.active.is_(True))
+        if country:
+            stmt = stmt.where(Job.country == country)
+        if status:
+            stmt = stmt.where(Job.eligibility_status == status.value)
+        if job_family:
+            stmt = stmt.where(Job.job_family == job_family)
+        if company_id is not None:
+            stmt = stmt.where(Job.company_id == company_id)
+        if query and query.strip():
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Job.title.ilike(pattern),
+                    Job.company_name.ilike(pattern),
+                    Job.description.ilike(pattern),
+                )
+            )
+        if min_eligibility_score is not None:
+            stmt = stmt.where(Job.eligibility_score >= min_eligibility_score)
+        return int(self.session.scalar(stmt) or 0)
 
     def list_recommendation_jobs(
         self,
@@ -180,6 +237,7 @@ class Repository:
         limit: int = 500,
         country: str | None = None,
         role: str | None = None,
+        query: str | None = None,
     ) -> list[Job]:
         statuses = [EligibilityStatus.ELIGIBLE.value]
         if include_unknown:
@@ -200,11 +258,25 @@ class Repository:
                 stmt = stmt.where(Job.job_family == family.value)
             else:
                 stmt = stmt.where(or_(Job.title.ilike(f"%{role}%"), Job.job_family == role))
+        if query and query.strip():
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Job.title.ilike(pattern),
+                    Job.company_name.ilike(pattern),
+                    Job.description.ilike(pattern),
+                )
+            )
         stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit)
         return list(self.session.scalars(stmt).unique())
 
     def get_job(self, job_id: int) -> Job | None:
-        return self.session.get(Job, job_id)
+        stmt = (
+            select(Job)
+            .options(joinedload(Job.company), joinedload(Job.evidence))
+            .where(Job.id == job_id)
+        )
+        return self.session.scalars(stmt).unique().first()
 
     def create_candidate(self, candidate: CandidateCreate) -> Candidate:
         ontology = SkillOntology()
@@ -224,6 +296,24 @@ class Repository:
         self.session.flush()
         return item
 
+    def update_candidate(self, item: Candidate, candidate: CandidateCreate) -> Candidate:
+        ontology = SkillOntology()
+        item.name = candidate.name
+        item.target_roles = list(dict.fromkeys(candidate.target_roles))
+        item.skills = ontology.normalize_skills(candidate.skills)
+        item.years_of_experience = candidate.years_of_experience
+        item.seniority = candidate.seniority.value if candidate.seniority else None
+        item.preferred_countries = list(
+            dict.fromkeys(normalize_country(country) for country in candidate.preferred_countries)
+        )
+        item.visa_required = candidate.visa_required
+        item.relocation_preference = candidate.relocation_preference.value
+        item.remote_preference = candidate.remote_preference.value
+        item.excluded_locations = list(dict.fromkeys(value.strip() for value in candidate.excluded_locations))
+        item.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return item
+
     def get_candidate(self, candidate_id: int) -> Candidate | None:
         return self.session.get(Candidate, candidate_id)
 
@@ -236,6 +326,19 @@ class Repository:
             stmt = stmt.where(Company.country == country)
         stmt = stmt.order_by(Company.name).limit(limit)
         return list(self.session.scalars(stmt))
+
+    def get_company(self, company_id: int) -> Company | None:
+        return self.session.get(Company, company_id)
+
+    def list_company_jobs(self, company_id: int, *, limit: int = 100) -> list[Job]:
+        stmt = (
+            select(Job)
+            .options(joinedload(Job.company), joinedload(Job.evidence))
+            .where(Job.company_id == company_id, Job.active.is_(True))
+            .order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(stmt).unique())
 
     def add_sponsor_record(self, record: CompanySponsorEvidence) -> SponsorRecord:
         normalized = normalize_company_name(record.company_name)

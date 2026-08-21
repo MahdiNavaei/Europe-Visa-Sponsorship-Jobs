@@ -124,6 +124,22 @@ class JobEvidence(Base):
     job: Mapped[Job] = relationship(back_populates="evidence")
 
 
+class CandidateJobState(Base):
+    __tablename__ = "candidate_job_states"
+    __table_args__ = (UniqueConstraint("candidate_id", "job_id", name="uq_candidate_job_state"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    saved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    application_status: Mapped[str] = mapped_column(String(30), default="not_applied", nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+
+    job: Mapped[Job] = relationship()
+
+
 class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
 
