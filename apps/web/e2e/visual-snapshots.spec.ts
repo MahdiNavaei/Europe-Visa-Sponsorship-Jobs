@@ -90,25 +90,51 @@ async function installDashboardApi(page: Page) {
   });
 }
 
+async function capture(page: Page, path: string) {
+  await page.screenshot({ path, fullPage: true, animations: "disabled" });
+}
+
 test.describe("showcase UI snapshots", () => {
-  test.use({ viewport: { width: 1440, height: 1000 }, colorScheme: "light" });
+  test.skip(({ browserName }) => browserName !== "chromium", "Canonical snapshot artifacts use Chromium");
+
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+  });
 
   test("captures English landing page", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/en");
     await expect(page.getByRole("heading", { name: /Find European jobs/i })).toBeVisible();
-    await page.screenshot({ path: "artifacts/ui/landing-en.png", fullPage: true });
+    await capture(page, "artifacts/ui/landing-en.png");
   });
 
   test("captures Persian RTL landing page", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/fa");
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-    await page.screenshot({ path: "artifacts/ui/landing-fa.png", fullPage: true });
+    await capture(page, "artifacts/ui/landing-fa.png");
   });
 
   test("captures populated Career Radar dashboard", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await installDashboardApi(page);
     await page.goto("/en/dashboard");
     await expect(page.getByText("Senior AI Engineer")).toBeVisible();
-    await page.screenshot({ path: "artifacts/ui/dashboard-en.png", fullPage: true });
+    await capture(page, "artifacts/ui/dashboard-en.png");
+  });
+
+  test("captures mobile English landing page", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/en");
+    await expect(page.getByRole("heading", { name: /Find European jobs/i })).toBeVisible();
+    await capture(page, "artifacts/ui/landing-en-mobile.png");
+  });
+
+  test("captures mobile Career Radar dashboard", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installDashboardApi(page);
+    await page.goto("/en/dashboard");
+    await expect(page.getByText("Senior AI Engineer")).toBeVisible();
+    await capture(page, "artifacts/ui/dashboard-en-mobile.png");
   });
 });
