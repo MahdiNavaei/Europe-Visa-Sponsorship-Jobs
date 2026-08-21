@@ -1,0 +1,22 @@
+[
+  {
+    "provider": "greenhouse",
+    "company_name": "N26",
+    "slug": "n26",
+    "careers_url": "https://n26.com/en/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "trivago",
+    "slug": "trivago",
+    "default_country": "Germany",
+    "careers_url": "https://careers.trivago.com/"
+  },
+  {
+    "provider": "ashby",
+    "company_name": "Clera",
+    "slug": "Clera",
+    "default_country": "Germany",
+    "careers_url": "https://jobs.ashbyhq.com/Clera"
+  }
+]
