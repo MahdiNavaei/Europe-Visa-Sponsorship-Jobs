@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_FILE_BYTES = 5 * 1024 * 1024
+SELF = Path("scripts/public_repo_audit.py")
 
 FORBIDDEN_PARTS = {
     "node_modules",
@@ -28,6 +29,7 @@ SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     "AWS access key": re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
     "Slack token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
 }
+LOCAL_PATH_PATTERN = re.compile(r"(?:[A-Za-z]:\\Users\\|[A-Za-z]:\\Projects\\|/home/[^/]+/)")
 
 
 def tracked_files() -> list[Path]:
@@ -42,9 +44,8 @@ def tracked_files() -> list[Path]:
 
 def audit() -> list[str]:
     failures: list[str] = []
-    files = tracked_files()
 
-    for path in files:
+    for path in tracked_files():
         relative = path.relative_to(ROOT)
         parts = set(relative.parts)
 
@@ -62,12 +63,14 @@ def audit() -> list[str]:
         except (UnicodeDecodeError, OSError):
             continue
 
-        if re.search(r"(?:[A-Za-z]:\\Users\\|[A-Za-z]:\\Projects\\|/home/[^/]+/)", content):
+        # The audit implementation necessarily contains the detection patterns themselves.
+        if relative != SELF and LOCAL_PATH_PATTERN.search(content):
             failures.append(f"local absolute path found in: {relative}")
 
-        for label, pattern in SECRET_PATTERNS.items():
-            if pattern.search(content):
-                failures.append(f"possible {label} found in: {relative}")
+        if relative != SELF:
+            for label, pattern in SECRET_PATTERNS.items():
+                if pattern.search(content):
+                    failures.append(f"possible {label} found in: {relative}")
 
     return sorted(set(failures))
 
