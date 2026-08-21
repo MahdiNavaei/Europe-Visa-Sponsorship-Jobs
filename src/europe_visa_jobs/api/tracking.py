@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs.db.repository import Repository
@@ -31,7 +31,7 @@ def list_job_states(
     candidate_id: int,
     session: SessionDep,
     saved_only: bool = False,
-    application_status: ApplicationStatus | None = Query(default=None),
+    application_status: ApplicationStatus | None = None,
 ) -> list[CandidateJobStateRead]:
     if Repository(session).get_candidate(candidate_id) is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
