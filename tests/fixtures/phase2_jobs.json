@@ -1,0 +1,29 @@
+[
+  {
+    "external_id": "ai-de",
+    "company_name": "Global AI GmbH",
+    "title": "Senior Machine Learning Engineer",
+    "description": "Visa sponsorship and relocation support are available. Required skills: Python, PyTorch, Kubernetes. Nice to have: MLflow.",
+    "location": "Berlin, Germany",
+    "country": "Germany",
+    "apply_url": "https://example.com/ai-de"
+  },
+  {
+    "external_id": "backend-de",
+    "company_name": "Backend Systems GmbH",
+    "title": "Senior Backend Engineer",
+    "description": "Visa sponsorship is available. Required skills: Python, PostgreSQL, Docker.",
+    "location": "Munich, Germany",
+    "country": "Germany",
+    "apply_url": "https://example.com/backend-de"
+  },
+  {
+    "external_id": "frontend-se",
+    "company_name": "Nordic Web AB",
+    "title": "Frontend Engineer",
+    "description": "Visa sponsorship is available. Required skills: JavaScript, React, CSS.",
+    "location": "Stockholm, Sweden",
+    "country": "Sweden",
+    "apply_url": "https://example.com/frontend-se"
+  }
+]

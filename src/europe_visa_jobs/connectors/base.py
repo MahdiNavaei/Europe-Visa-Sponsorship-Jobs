@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import httpx
 
@@ -20,7 +21,7 @@ class BaseConnector(ABC):
     async def fetch_jobs(self) -> list[NormalizedJob]:
         raise NotImplementedError
 
-    async def _get(self, url: str, **kwargs: object) -> httpx.Response:
+    async def _get(self, url: str, **kwargs: Any) -> httpx.Response:
         try:
             response = await self.client.get(url, **kwargs)
             response.raise_for_status()

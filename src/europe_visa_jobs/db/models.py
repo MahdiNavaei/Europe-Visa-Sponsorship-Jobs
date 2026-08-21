@@ -2,12 +2,41 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class Candidate(Base):
+    __tablename__ = "candidates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_roles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    years_of_experience: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    seniority: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    preferred_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    visa_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    relocation_preference: Mapped[str] = mapped_column(String(30), default="preferred", nullable=False)
+    remote_preference: Mapped[str] = mapped_column(String(30), default="no_preference", nullable=False)
+    excluded_locations: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
 
 
 class Company(Base):
@@ -65,6 +94,10 @@ class Job(Base):
     job_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     job_family: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    required_skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    preferred_skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    min_experience_years: Mapped[float | None] = mapped_column(Float, nullable=True)
+    seniority: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     eligibility_status: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     eligibility_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)

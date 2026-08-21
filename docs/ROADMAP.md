@@ -30,17 +30,17 @@ The project is intentionally divided into four delivery phases.
 - [x] Optional scheduled ingestion workflow
 - [x] No LLM / no paid AI API dependency
 
-## Phase 2 — Candidate Matching & Intelligence
+## Phase 2 — Candidate Matching & Intelligence ✅
 
-- [ ] Candidate profile
-- [ ] Role preferences and experience level
-- [ ] Skill taxonomy
-- [ ] Skill aliases/synonyms
-- [ ] Deterministic CV/profile parsing where practical
-- [ ] Job-to-profile match score
-- [ ] Country preferences
-- [ ] Candidate-specific eligibility checks
-- [ ] Explainable ranking
+- [x] Candidate profile
+- [x] Role preferences and experience level
+- [x] Skill taxonomy
+- [x] Skill aliases/synonyms
+- [x] Deterministic CV/profile parsing where practical
+- [x] Job-to-profile match score
+- [x] Country preferences
+- [x] Candidate-specific eligibility checks
+- [x] Explainable ranking
 - [ ] Saved jobs and application state
 
 ## Phase 3 — Professional UI/UX

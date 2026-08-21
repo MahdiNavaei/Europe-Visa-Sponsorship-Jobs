@@ -2,17 +2,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, joinedload
 
-from europe_visa_jobs.db.models import Company, Job, JobEvidence, SponsorRecord
+from europe_visa_jobs.db.models import Candidate, Company, Job, JobEvidence, SponsorRecord
+from europe_visa_jobs.intelligence.job_profile import analyze_job
+from europe_visa_jobs.intelligence.ontology import SkillOntology
 from europe_visa_jobs.schemas import (
+    CandidateCreate,
     CompanySponsorEvidence,
     EligibilityAssessment,
     EligibilityStatus,
+    JobFamily,
     NormalizedJob,
 )
-from europe_visa_jobs.utils import normalize_company_name
+from europe_visa_jobs.utils import classify_role, normalize_company_name, normalize_country
 
 
 class Repository:
@@ -61,6 +65,7 @@ class Repository:
             career_url=career_url,
             sponsor_verified=sponsor is not None,
         )
+        profile = analyze_job(normalized_job.title, normalized_job.description, normalized_job.job_family)
         stmt = select(Job).where(
             Job.provider == normalized_job.provider.value,
             Job.source_slug == normalized_job.source_slug,
@@ -85,6 +90,10 @@ class Repository:
                 job_url=normalized_job.job_url,
                 posted_at=normalized_job.posted_at,
                 job_family=normalized_job.job_family.value,
+                required_skills=profile.required_skills,
+                preferred_skills=profile.preferred_skills,
+                min_experience_years=profile.min_experience_years,
+                seniority=profile.seniority.value if profile.seniority else None,
                 eligibility_status=assessment.status.value,
                 eligibility_score=assessment.score,
             )
@@ -104,6 +113,10 @@ class Repository:
             job.job_url = normalized_job.job_url
             job.posted_at = normalized_job.posted_at
             job.job_family = normalized_job.job_family.value
+            job.required_skills = profile.required_skills
+            job.preferred_skills = profile.preferred_skills
+            job.min_experience_years = profile.min_experience_years
+            job.seniority = profile.seniority.value if profile.seniority else None
             job.eligibility_status = assessment.status.value
             job.eligibility_score = assessment.score
             job.last_seen_at = datetime.now(UTC)
@@ -160,8 +173,62 @@ class Repository:
         stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
 
+    def list_recommendation_jobs(
+        self,
+        *,
+        include_unknown: bool = False,
+        limit: int = 500,
+        country: str | None = None,
+        role: str | None = None,
+    ) -> list[Job]:
+        statuses = [EligibilityStatus.ELIGIBLE.value]
+        if include_unknown:
+            statuses.append(EligibilityStatus.UNKNOWN.value)
+        stmt = (
+            select(Job)
+            .options(joinedload(Job.company), joinedload(Job.evidence))
+            .where(Job.active.is_(True), Job.eligibility_status.in_(statuses))
+        )
+        if country:
+            stmt = stmt.where(Job.country == country)
+        if role:
+            try:
+                family = JobFamily(role)
+            except ValueError:
+                family = classify_role(role)
+            if family is not JobFamily.OTHER:
+                stmt = stmt.where(Job.job_family == family.value)
+            else:
+                stmt = stmt.where(or_(Job.title.ilike(f"%{role}%"), Job.job_family == role))
+        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit)
+        return list(self.session.scalars(stmt).unique())
+
     def get_job(self, job_id: int) -> Job | None:
         return self.session.get(Job, job_id)
+
+    def create_candidate(self, candidate: CandidateCreate) -> Candidate:
+        ontology = SkillOntology()
+        item = Candidate(
+            name=candidate.name,
+            target_roles=list(dict.fromkeys(candidate.target_roles)),
+            skills=ontology.normalize_skills(candidate.skills),
+            years_of_experience=candidate.years_of_experience,
+            seniority=candidate.seniority.value if candidate.seniority else None,
+            preferred_countries=list(dict.fromkeys(normalize_country(country) for country in candidate.preferred_countries)),
+            visa_required=candidate.visa_required,
+            relocation_preference=candidate.relocation_preference.value,
+            remote_preference=candidate.remote_preference.value,
+            excluded_locations=list(dict.fromkeys(item.strip() for item in candidate.excluded_locations)),
+        )
+        self.session.add(item)
+        self.session.flush()
+        return item
+
+    def get_candidate(self, candidate_id: int) -> Candidate | None:
+        return self.session.get(Candidate, candidate_id)
+
+    def get_candidate_by_name(self, name: str) -> Candidate | None:
+        return self.session.scalar(select(Candidate).where(Candidate.name == name))
 
     def list_companies(self, *, country: str | None = None, limit: int = 100) -> list[Company]:
         stmt = select(Company)

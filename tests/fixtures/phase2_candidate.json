@@ -1,0 +1,12 @@
+{
+  "name": "Senior ML Engineer",
+  "target_roles": ["Machine Learning Engineer", "AI Engineer"],
+  "skills": ["python3", "Torch", "GenAI", "RAG", "K8s", "MLflow"],
+  "years_of_experience": 7,
+  "seniority": "senior",
+  "preferred_countries": ["Germany", "Netherlands", "Sweden"],
+  "visa_required": true,
+  "relocation_preference": "preferred",
+  "remote_preference": "no_preference",
+  "excluded_locations": ["United Kingdom"]
+}

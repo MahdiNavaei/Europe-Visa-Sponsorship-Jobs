@@ -8,6 +8,9 @@ WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY migrations ./migrations
 COPY src ./src
+COPY config ./config
+COPY data ./data
+COPY scripts ./scripts
 RUN pip install --upgrade pip && pip install ".[postgres]"
 
 EXPOSE 8000

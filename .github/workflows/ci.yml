@@ -11,6 +11,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src:.
     strategy:
       fail-fast: false
       matrix:
@@ -33,7 +35,10 @@ jobs:
         run: python -m compileall -q src
 
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests scripts
+
+      - name: Type check
+        run: mypy src scripts --ignore-missing-imports
 
       - name: Migration smoke test
         env:
@@ -44,3 +49,6 @@ jobs:
 
       - name: Tests with coverage
         run: pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
+
+      - name: Docker build
+        run: docker build --tag europe-visa-sponsorship-jobs:ci .
