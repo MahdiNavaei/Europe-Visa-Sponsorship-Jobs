@@ -226,6 +226,16 @@ class CompanyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CompanyIntelligenceRead(BaseModel):
+    company: CompanyRead
+    visa_friendliness_score: float = Field(ge=0, le=100)
+    positive_signals: list[str] = Field(default_factory=list)
+    negative_signals: list[str] = Field(default_factory=list)
+    active_jobs: int = Field(ge=0)
+    eligible_jobs: int = Field(ge=0)
+    jobs: list[JobRead] = Field(default_factory=list)
+
+
 class StatsRead(BaseModel):
     total_jobs: int
     eligible_jobs: int

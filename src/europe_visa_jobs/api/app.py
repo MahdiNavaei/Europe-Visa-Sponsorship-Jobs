@@ -12,10 +12,12 @@ from europe_visa_jobs import __version__
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db, init_db
 from europe_visa_jobs.eligibility import CountryRulesRegistry
+from europe_visa_jobs.intelligence.company import CompanyIntelligenceScorer
 from europe_visa_jobs.intelligence.ranking import JobRecommendation, RankingEngine
 from europe_visa_jobs.schemas import (
     CandidateCreate,
     CandidateRead,
+    CompanyIntelligenceRead,
     CompanyRead,
     EligibilityStatus,
     JobDetailRead,
@@ -66,20 +68,40 @@ def countries() -> dict[str, list[str]]:
 @app.get("/api/v1/jobs", response_model=list[JobRead])
 def list_jobs(
     session: SessionDep,
+    response: Response,
     country: str | None = None,
     status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
     visa_status: EligibilityStatus | None = None,
     job_family: str | None = None,
     category: str | None = None,
+    company_id: int | None = Query(default=None, ge=1),
+    query: str | None = Query(default=None, max_length=200),
+    min_visa_score: float | None = Query(default=None, ge=0, le=100),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[JobRead]:
-    jobs = Repository(session).list_jobs(
+    repo = Repository(session)
+    resolved_status = visa_status if visa_status is not None else status
+    resolved_family = job_family or category
+    jobs = repo.list_jobs(
         country=country,
-        status=visa_status if visa_status is not None else status,
-        job_family=job_family or category,
+        status=resolved_status,
+        job_family=resolved_family,
+        company_id=company_id,
+        query=query,
+        min_eligibility_score=min_visa_score,
         limit=limit,
         offset=offset,
+    )
+    response.headers["X-Total-Count"] = str(
+        repo.count_jobs(
+            country=country,
+            status=resolved_status,
+            job_family=resolved_family,
+            company_id=company_id,
+            query=query,
+            min_eligibility_score=min_visa_score,
+        )
     )
     return [JobRead.model_validate(item) for item in jobs]
 
@@ -100,6 +122,35 @@ def list_companies(
 ) -> list[CompanyRead]:
     companies = Repository(session).list_companies(country=country, limit=limit)
     return [CompanyRead.model_validate(item) for item in companies]
+
+
+@app.get("/api/v1/companies/{company_id}", response_model=CompanyIntelligenceRead)
+def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelligenceRead:
+    repo = Repository(session)
+    company = repo.get_company(company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    jobs = repo.list_company_jobs(company_id, limit=100)
+    scorer = CompanyIntelligenceScorer()
+    summaries = [scorer.score(company, job) for job in jobs]
+    if summaries:
+        score = round(sum(item.score for item in summaries) / len(summaries), 2)
+    else:
+        score = 70.0 if company.sponsor_verified else 25.0
+    positive = list(dict.fromkeys(signal for item in summaries for signal in item.positive_signals))
+    negative = list(dict.fromkeys(signal for item in summaries for signal in item.negative_signals))
+    if company.sponsor_verified and "Recognized sponsor evidence is on file." not in positive:
+        positive.insert(0, "Recognized sponsor evidence is on file.")
+    eligible_jobs = sum(job.eligibility_status == EligibilityStatus.ELIGIBLE.value for job in jobs)
+    return CompanyIntelligenceRead(
+        company=CompanyRead.model_validate(company),
+        visa_friendliness_score=score,
+        positive_signals=positive,
+        negative_signals=negative,
+        active_jobs=len(jobs),
+        eligible_jobs=eligible_jobs,
+        jobs=[JobRead.model_validate(job) for job in jobs],
+    )
 
 
 @app.get("/api/v1/stats", response_model=StatsRead)
@@ -157,6 +208,17 @@ def get_candidate(candidate_id: int, session: SessionDep) -> CandidateRead:
     return CandidateRead.model_validate(item)
 
 
+@app.put("/api/v1/candidates/{candidate_id}", response_model=CandidateRead)
+def update_candidate(candidate_id: int, candidate: CandidateCreate, session: SessionDep) -> CandidateRead:
+    repo = Repository(session)
+    item = repo.get_candidate(candidate_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    updated = repo.update_candidate(item, candidate)
+    session.commit()
+    return CandidateRead.model_validate(updated)
+
+
 def _rank_recommendations(
     candidate_id: int,
     session: Session,
@@ -165,6 +227,7 @@ def _rank_recommendations(
     offset: int,
     country: str | None,
     role: str | None,
+    query: str | None,
     min_score: float,
     include_unknown: bool,
 ) -> tuple[list[JobRecommendation], int]:
@@ -177,9 +240,22 @@ def _rank_recommendations(
         include_unknown=include_unknown,
         country=country,
         role=role,
+        query=query,
     )
     ranked = [item for item in engine.recommend(candidate, jobs, limit=500) if item.total_score >= min_score]
     return ranked[offset : offset + limit], len(ranked)
+
+
+@app.get("/api/v1/recommendations/{candidate_id}/jobs/{job_id}", response_model=JobRecommendationRead)
+def recommendation_for_job(candidate_id: int, job_id: int, session: SessionDep) -> JobRecommendationRead:
+    repo = Repository(session)
+    candidate = repo.get_candidate(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    job = repo.get_job(job_id)
+    if job is None or not job.active:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _recommendation_read(RankingEngine().score(candidate, job))
 
 
 @app.get("/api/v1/recommendations/{candidate_id}", response_model=list[JobRecommendationRead])
@@ -192,6 +268,7 @@ def recommendations(
     offset: int = Query(default=0, ge=0),
     country: str | None = None,
     role: str | None = None,
+    query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
 ) -> list[JobRecommendationRead]:
@@ -202,6 +279,7 @@ def recommendations(
         offset=offset,
         country=country,
         role=role,
+        query=query,
         min_score=min_score,
         include_unknown=include_unknown,
     )
@@ -219,6 +297,7 @@ def explain_recommendations(
     offset: int = Query(default=0, ge=0),
     country: str | None = None,
     role: str | None = None,
+    query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
 ) -> RecommendationExplanationRead:
@@ -234,6 +313,7 @@ def explain_recommendations(
         offset=offset,
         country=country,
         role=role,
+        query=query,
         min_score=min_score,
         include_unknown=include_unknown,
     )
