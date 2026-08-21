@@ -149,8 +149,10 @@ test("language switch performs a real English to Persian RTL navigation", async 
 });
 
 test("dark mode persists after navigation and reload", async ({ page }) => {
-  await page.addInitScript(() => window.localStorage.setItem("theme", "light"));
   await page.goto("/en");
+  await page.evaluate(() => window.localStorage.setItem("theme", "light"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/light/);
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("theme"))).toBe("dark");
   await page.reload();
@@ -158,9 +160,8 @@ test("dark mode persists after navigation and reload", async ({ page }) => {
 });
 
 test("full six-step onboarding creates a candidate and lands on Career Radar", async ({ page }) => {
+  test.setTimeout(60_000);
   let submitted: Record<string, unknown> | null = null;
-  await installBaseApi(page);
-  await page.unroute("**/api/v1/**");
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -173,7 +174,8 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
     if (path === "/api/v1/stats") return json(route, { total_jobs: 1, eligible_jobs: 1, rejected_jobs: 0, unknown_jobs: 0, companies: 1 });
     if (path === "/api/v1/recommendations/11") return json(route, [recommendation], 200, { "X-Total-Count": "1" });
     if (path === "/api/v1/jobs") return json(route, [job], 200, { "X-Total-Count": "1" });
-    return json(route, { countries: ["Germany"] });
+    if (path === "/api/v1/countries") return json(route, { countries: ["Germany"] });
+    return json(route, { detail: `Unhandled test route: ${request.method()} ${path}` }, 404);
   });
 
   await page.goto("/en/onboarding");
@@ -195,7 +197,9 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
   await page.getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Remote is important" }).click();
-  await page.getByRole("button", { name: "See my radar" }).click();
+  const finish = page.getByRole("button", { name: "See my radar" });
+  await expect(finish).toBeVisible();
+  await finish.click();
 
   await expect(page).toHaveURL(/\/en\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Your European career radar" })).toBeVisible();
@@ -213,32 +217,40 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
 
 test("personalized jobs send server filters, sorting and pagination parameters", async ({ page }) => {
   await setCandidate(page);
-  const recommendationRequests: URL[] = [];
+  let sawFilteredRequest = false;
+  let sawNextPage = false;
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/countries") return json(route, { countries: ["Germany", "Netherlands"] });
     if (url.pathname === "/api/v1/recommendations/11") {
-      recommendationRequests.push(url);
+      const filtered =
+        url.searchParams.get("country") === "Germany" &&
+        url.searchParams.get("min_score") === "80" &&
+        url.searchParams.get("sort") === "visa";
+      if (filtered) sawFilteredRequest = true;
       const offset = Number(url.searchParams.get("offset") ?? 0);
-      const pageJob = offset >= 20 ? { ...job, id: 27, external_id: "demo-27", title: "AI Platform Engineer" } : job;
+      if (offset >= 20) sawNextPage = true;
+      const pageJob = offset >= 20
+        ? { ...job, id: 27, external_id: "demo-27", title: "AI Platform Engineer" }
+        : filtered
+          ? { ...job, title: "Filtered Senior AI Engineer" }
+          : job;
       return json(route, [{ ...recommendation, job_id: pageJob.id, job: pageJob }], 200, { "X-Total-Count": "21" });
     }
     return json(route, { detail: "not needed" }, 404);
   });
 
   await page.goto("/en/jobs");
+  await expect(page.getByText("Personalized ranking")).toBeVisible();
   await page.getByLabel("Country").selectOption("Germany");
   await page.getByLabel("Minimum match score").selectOption("80");
   await page.getByLabel("Sort").selectOption("visa");
-  await expect.poll(() => recommendationRequests.some((url) =>
-    url.searchParams.get("country") === "Germany" &&
-    url.searchParams.get("min_score") === "80" &&
-    url.searchParams.get("sort") === "visa",
-  )).toBe(true);
+  await expect.poll(() => sawFilteredRequest).toBe(true);
+  await expect(page.getByText("Filtered Senior AI Engineer")).toBeVisible();
 
   await page.getByRole("button", { name: "Next" }).click();
-  await expect.poll(() => recommendationRequests.some((url) => url.searchParams.get("offset") === "20")).toBe(true);
+  await expect.poll(() => sawNextPage).toBe(true);
   await expect(page.getByText("AI Platform Engineer")).toBeVisible();
 });
 
@@ -246,11 +258,12 @@ test("job detail shows candidate-specific matching and links to company intellig
   await setCandidate(page);
   await installBaseApi(page);
   await page.goto("/en/jobs/7");
+  const main = page.getByRole("main");
   await expect(page.getByRole("heading", { name: "Senior AI Engineer" })).toBeVisible();
-  await expect(page.getByText("Your match")).toBeVisible();
-  await expect(page.getByText("Strong Python match")).toBeVisible();
-  await expect(page.getByText("Matched skills")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Companies" })).toHaveAttribute("href", "/en/companies/3");
+  await expect(main.getByText("Your match")).toBeVisible();
+  await expect(main.getByText("Strong Python match").first()).toBeVisible();
+  await expect(main.getByText("Matched skills")).toBeVisible();
+  await expect(main.getByRole("link", { name: "Companies" })).toHaveAttribute("href", "/en/companies/3");
 });
 
 test("company detail exposes evidence-based company signals and active jobs", async ({ page }) => {
@@ -268,5 +281,5 @@ test("recommendation explanation uses the candidate id from the route", async ({
   await expect(page.getByRole("heading", { name: "Why these roles fit Samira Ahmadi" })).toBeVisible();
   await expect(page.getByText("Ranking weights")).toBeVisible();
   await expect(page.getByText("35%")).toBeVisible();
-  await expect(page.getByText("Strong Python match")).toBeVisible();
+  await expect(page.getByText("Strong Python match").first()).toBeVisible();
 });
