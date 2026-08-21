@@ -192,6 +192,8 @@ jobs:
   acceptance:
     runs-on: ubuntu-latest
     needs: [test, web, postgres-integration, security]
+    env:
+      POSTGRES_PASSWORD: visa_jobs_acceptance
     steps:
       - name: Checkout fresh repository
         uses: actions/checkout@v5
