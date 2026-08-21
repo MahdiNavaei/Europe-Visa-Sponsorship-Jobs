@@ -1,0 +1,15 @@
+[
+  {
+    "provider": "greenhouse",
+    "company_name": "Example Company",
+    "slug": "example",
+    "default_country": "Netherlands"
+  },
+  {
+    "provider": "lever",
+    "company_name": "Example EU Company",
+    "slug": "example",
+    "default_country": "Germany",
+    "region": "eu"
+  }
+]

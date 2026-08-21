@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Compile
+        run: python -m compileall -q src
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Migration smoke test
+        env:
+          DATABASE_URL: sqlite:///./ci_migration.db
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+
+      - name: Tests with coverage
+        run: pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85

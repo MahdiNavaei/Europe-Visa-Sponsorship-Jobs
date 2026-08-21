@@ -2,73 +2,80 @@
 
 ## Problem
 
-Many international applicants spend hours applying to jobs that are impossible because of hidden immigration restrictions.
+A large job board is not useful to a candidate who needs immigration support if most vacancies silently require existing work authorization.
 
-A company may:
+The product therefore optimizes for **actionable opportunities**, not raw job count.
 
-- have offices in Europe
-- advertise internationally
-- even have sponsored employees
+## Product goal
 
-but the specific job may still require existing work authorization.
+Return European technical vacancies where a non-EU candidate has strong evidence that employer-supported immigration is realistically possible.
 
-## Product Goal
+The current system does not require a job to explicitly mention Iran. It does require the absence of detected nationality/residency restrictions and strong sponsorship evidence.
 
-Return only opportunities with a high probability of being realistic for non-EU candidates.
+## Core product rules
 
-## Job Eligibility Pipeline
+1. Prefer first-party company ATS/career data over aggregators.
+2. Never infer that every vacancy is sponsored just because the company has sponsored before.
+3. Hard negative restrictions override positive keywords.
+4. Missing evidence becomes `unknown`, not `eligible`.
+5. Default API results contain only `eligible` jobs.
+6. Every decision must be explainable with stored evidence.
+7. No paid LLM/API is required in the current architecture.
 
-Every job should pass through:
+## Eligibility pipeline
 
-1. Active job validation
-2. Role classification
-3. Sponsorship evidence collection
-4. Restriction detection
-5. Country immigration rule validation
-6. Candidate matching
-
-## Evidence Model
-
-A job should never simply be marked:
-
+```text
+active public vacancy
+        ↓
+supported technical role
+        ↓
+country rule available
+        ↓
+hard restriction detection
+        ↓
+job-level sponsorship evidence
+        +
+verified company sponsor evidence when required
+        ↓
+strict eligibility decision
 ```
-visa_sponsorship=true
-```
 
-Instead store evidence:
+## Evidence model
 
-```
-Company evidence:
-- recognised sponsor registry
-- previous relocation history
-- international hiring history
+### Positive job evidence
 
-Job evidence:
-- sponsorship mentioned
-- relocation mentioned
-- international applicants accepted
+Examples:
 
-Negative evidence:
-- EU only
+- visa sponsorship
+- work permit support
+- immigration support
+- Highly Skilled Migrant / kennismigrant
+- EU Blue Card
+- visa + relocation support
+
+### Supporting evidence
+
+- relocation package/support
+- international candidates welcome
+- applications from abroad
+
+### Company evidence
+
+- verified official sponsor register entry
+- future country-specific verified datasets
+
+### Hard negative evidence
+
+Examples:
+
+- no visa sponsorship
+- unable to sponsor
 - must already have right to work
-- local candidates only
-```
+- authorized to work without sponsorship
+- EU/EEA candidates only
+- specified citizenship required
+- candidate must already reside in a restricted region
 
-## Confidence Score
+## Strictness
 
-Example:
-
-```
-Visa Compatibility: 91%
-
-Positive:
-✓ Recognised sponsor
-✓ Relocation support mentioned
-✓ English workplace
-✓ No EU-only restriction
-
-Unknown:
-? No direct Iranian employee evidence
-```
-
-The system should explain decisions instead of producing black-box rankings.
+The system is deliberately conservative. A false-positive recommendation wastes the user's time and damages trust. Unknown opportunities remain queryable for debugging/research, but are hidden from the default user-facing result set.

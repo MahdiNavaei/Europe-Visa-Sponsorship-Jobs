@@ -1,46 +1,75 @@
 # Roadmap
 
-## Phase 0 - Foundation
+The project is intentionally divided into four delivery phases.
 
-- [x] Repository initialization
-- [x] Product definition
-- [ ] Project structure
-- [ ] Database schema
-- [ ] Development environment
+## Phase 1 — Core Platform & Data Intelligence Engine ✅
 
-## Phase 1 - Job Intelligence Core
+- [x] Python package and project structure
+- [x] Normalized job schema
+- [x] PostgreSQL/SQLite database schema
+- [x] Alembic migration
+- [x] Company, job, evidence, sponsor-record, and ingestion-run persistence
+- [x] ATS connector interface
+- [x] Greenhouse connector
+- [x] Lever connector (global + EU)
+- [x] Ashby connector
+- [x] Workable connector
+- [x] Personio XML connector
+- [x] Job normalization
+- [x] Country inference
+- [x] Technical-role classification
+- [x] Hard work-authorization/geographic restriction detection
+- [x] Positive visa/work-permit/relocation signal detection
+- [x] Sponsor registry evidence store and CSV importer
+- [x] Country-rule registry: NL, DE, UK, IE, SE, FI, DK
+- [x] Explainable strict eligibility engine
+- [x] Stale-job deactivation
+- [x] FastAPI endpoints
+- [x] Docker/PostgreSQL development environment
+- [x] CI + coverage gate
+- [x] Optional scheduled ingestion workflow
+- [x] No LLM / no paid AI API dependency
 
-- [ ] Job schema
-- [ ] ATS connector interface
-- [ ] Greenhouse connector
-- [ ] Lever connector
-- [ ] Ashby connector
-- [ ] Job normalization pipeline
+## Phase 2 — Candidate Matching & Intelligence
 
-## Phase 2 - European Visa Intelligence
+- [ ] Candidate profile
+- [ ] Role preferences and experience level
+- [ ] Skill taxonomy
+- [ ] Skill aliases/synonyms
+- [ ] Deterministic CV/profile parsing where practical
+- [ ] Job-to-profile match score
+- [ ] Country preferences
+- [ ] Candidate-specific eligibility checks
+- [ ] Explainable ranking
+- [ ] Saved jobs and application state
 
-- [ ] Country rule engine
-- [ ] Netherlands highly skilled migrant rules
-- [ ] Germany Blue Card rules
-- [ ] UK Skilled Worker rules
-- [ ] Ireland permit signals
+## Phase 3 — Professional UI/UX
 
-## Phase 3 - Eligibility Engine
+- [ ] Product design system
+- [ ] Responsive public landing page
+- [ ] Candidate onboarding flow
+- [ ] Professional job discovery dashboard
+- [ ] Search, filters, sort, and empty/loading/error states
+- [ ] Visa-evidence visualization
+- [ ] Job detail experience
+- [ ] Company intelligence page
+- [ ] Candidate profile/settings UX
+- [ ] Accessibility review
+- [ ] Mobile/tablet/desktop responsive behavior
+- [ ] UX polish and interaction states
 
-- [ ] Sponsorship evidence scoring
-- [ ] Restriction detector
-- [ ] Explainable scoring
+## Phase 4 — Full Testing, Integration & E2E Hardening
 
-## Phase 4 - Candidate Matching
-
-- [ ] User profile
-- [ ] Skill extraction
-- [ ] Job matching
-- [ ] Ranking
-
-## Phase 5 - Product Layer
-
-- [ ] API
-- [ ] Dashboard
-- [ ] Notifications
-- [ ] Community contributions
+- [ ] Complete backend unit coverage
+- [ ] Complete frontend component tests
+- [ ] Connector contract tests
+- [ ] Database migration tests
+- [ ] API integration suite
+- [ ] Browser E2E with Playwright
+- [ ] Full user journey E2E
+- [ ] Production-like Docker E2E environment
+- [ ] Failure/retry/stale-data scenarios
+- [ ] Security checks
+- [ ] Performance/load tests for critical endpoints
+- [ ] CI quality gates for the complete stack
+- [ ] Release checklist and reproducible production build
