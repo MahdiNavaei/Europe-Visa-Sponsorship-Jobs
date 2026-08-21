@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ScoreBadge, ScoreBar } from "@/components/ui/progress";
+import { ScoreBar } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJob } from "@/lib/api/hooks";
 import { formatDate, formatScore, labelize } from "@/lib/utils/format";
