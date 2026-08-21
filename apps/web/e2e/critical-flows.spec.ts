@@ -179,6 +179,8 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
   });
 
   await page.goto("/en/onboarding");
+  await page.evaluate(() => window.localStorage.removeItem("career-radar-candidate"));
+  await page.reload();
   await page.getByPlaceholder(/Samira/i).fill("Samira Ahmadi");
   await page.getByRole("button", { name: "AI / Machine Learning" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
@@ -197,8 +199,8 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
   await page.getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Remote is important" }).click();
-  const finish = page.getByRole("button", { name: "See my radar" });
-  await expect(finish).toBeVisible();
+  const finish = page.locator('form button[type="submit"]');
+  await expect(finish).toHaveText(/See my radar/);
   await finish.click();
 
   await expect(page).toHaveURL(/\/en\/dashboard$/);
@@ -249,7 +251,7 @@ test("personalized jobs send server filters, sorting and pagination parameters",
   await expect.poll(() => sawFilteredRequest).toBe(true);
   await expect(page.getByText("Filtered Senior AI Engineer")).toBeVisible();
 
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect.poll(() => sawNextPage).toBe(true);
   await expect(page.getByText("AI Platform Engineer")).toBeVisible();
 });
