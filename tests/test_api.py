@@ -37,12 +37,18 @@ def test_api_health_jobs_details_companies_and_stats(session_factory):
     app.dependency_overrides[get_db] = override_db
     client = TestClient(app)
     try:
-        assert client.get("/health").json()["status"] == "ok"
+        health = client.get("/health")
+        assert health.json()["status"] == "ok"
+        assert health.headers["x-content-type-options"] == "nosniff"
+        assert health.headers["x-frame-options"] == "DENY"
+        assert health.headers["referrer-policy"] == "no-referrer"
+
         countries = client.get("/api/v1/countries").json()["countries"]
         assert "Germany" in countries and "Netherlands" in countries
 
         jobs = client.get("/api/v1/jobs", params={"country": "Germany"})
         assert jobs.status_code == 200
+        assert jobs.headers["x-total-count"] == "1"
         assert len(jobs.json()) == 1
         job_id = jobs.json()[0]["id"]
 
@@ -60,3 +66,28 @@ def test_api_health_jobs_details_companies_and_stats(session_factory):
         assert client.get("/api/v1/jobs/9999").status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_api_cors_is_explicit_and_exposes_pagination_header():
+    client = TestClient(app)
+    allowed_origin = "http://localhost:3000"
+
+    preflight = client.options(
+        "/api/v1/jobs",
+        headers={
+            "Origin": allowed_origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == allowed_origin
+    assert "access-control-allow-credentials" not in preflight.headers
+    assert "PATCH" not in preflight.headers["access-control-allow-methods"]
+
+    response = client.get("/health", headers={"Origin": allowed_origin})
+    assert response.headers["access-control-allow-origin"] == allowed_origin
+    assert response.headers["access-control-expose-headers"] == "X-Total-Count"
+
+    denied = client.get("/health", headers={"Origin": "https://attacker.example"})
+    assert "access-control-allow-origin" not in denied.headers
