@@ -11,9 +11,11 @@ export default async function LocaleLayout({ children, params }: Readonly<{ chil
   const { locale: rawLocale } = await params;
   if (!isLocale(rawLocale)) notFound();
   const locale = rawLocale as Locale;
+  const direction = locale === "fa" ? "rtl" : "ltr";
   return (
     <Providers locale={locale}>
-      <div lang={locale} dir={locale === "fa" ? "rtl" : "ltr"} className="min-h-screen">
+      <script dangerouslySetInnerHTML={{ __html: `document.documentElement.lang=${JSON.stringify(locale)};document.documentElement.dir=${JSON.stringify(direction)};` }} />
+      <div lang={locale} dir={direction} className="min-h-screen">
         <AppShell locale={locale}>{children}</AppShell>
       </div>
     </Providers>

@@ -20,7 +20,8 @@ const links = [
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} title="Toggle theme">{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>;
+  const toggle = () => { const nextTheme = resolvedTheme === "dark" ? "light" : "dark"; setTheme(nextTheme); document.documentElement.classList.toggle("dark", nextTheme === "dark"); };
+  return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={toggle} title="Toggle theme">{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>;
 }
 
 function LanguageToggle({ locale }: { locale: Locale }) {
