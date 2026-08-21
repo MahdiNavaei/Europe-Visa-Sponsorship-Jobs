@@ -13,7 +13,7 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev",
+    command: process.env.CI ? "npm run start -- -H 127.0.0.1" : "npm run dev",
     url: "http://127.0.0.1:3000/en",
     env: { NEXT_PUBLIC_API_URL: "" },
     reuseExistingServer: !process.env.CI,
