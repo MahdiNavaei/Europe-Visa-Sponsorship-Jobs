@@ -120,11 +120,19 @@ jobs:
             "/DOutputDir=$((Resolve-Path build/windows/installer).Path)" `
             packaging/windows/installer.iss
 
-          $portable = "build/windows/installer/CareerRadar-Portable-v$version.zip"
-          Compress-Archive -Path build/windows/app/* -DestinationPath $portable -CompressionLevel Optimal
+          $portable = (Join-Path (Resolve-Path build/windows/installer).Path "CareerRadar-Portable-v$version.zip")
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          Push-Location build/windows/app
+          try {
+            & $sevenZip a -tzip $portable ".\*" -mx=7
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip portable archive creation failed with exit code $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
 
           $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
           if (-not (Test-Path $installer)) { throw "Installer was not created." }
+          if (-not (Test-Path $portable)) { throw "Portable archive was not created." }
           $hashes = @(
             "{0}  {1}" -f (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower(), (Split-Path $installer -Leaf)
             "{0}  {1}" -f (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower(), (Split-Path $portable -Leaf)
