@@ -44,3 +44,6 @@ jobs:
 
       - name: Tests with coverage
         run: pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
+
+      - name: Docker build
+        run: docker build --tag europe-visa-sponsorship-jobs:ci .
