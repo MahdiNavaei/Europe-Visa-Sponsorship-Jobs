@@ -1,6 +1,11 @@
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.schemas import ATSProvider, CompanySponsorEvidence, EligibilityStatus, NormalizedJob
+from europe_visa_jobs.schemas import (
+    ATSProvider,
+    CompanySponsorEvidence,
+    EligibilityStatus,
+    NormalizedJob,
+)
 
 
 def sample_job(external_id: str = "1") -> NormalizedJob:
