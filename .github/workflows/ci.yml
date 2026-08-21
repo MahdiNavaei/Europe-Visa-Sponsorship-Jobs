@@ -136,6 +136,86 @@ jobs:
           curl -fsS http://127.0.0.1:8000/api/v1/stats
           curl -fsS 'http://127.0.0.1:8000/api/v1/jobs?limit=5'
 
+  live-ingestion-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: visa_jobs_live
+          POSTGRES_USER: visa_jobs
+          POSTGRES_PASSWORD: visa_jobs_live
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U visa_jobs -d visa_jobs_live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql+psycopg://visa_jobs:visa_jobs_live@127.0.0.1:5432/visa_jobs_live
+      PYTHONPATH: src:.
+      WEB_ORIGIN: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e ".[dev,postgres]"
+      - name: Migrate live-test database
+        run: alembic upgrade head
+      - name: Ingest public ATS feeds twice and validate freshness/idempotency/API
+        run: python scripts/live_ingestion_e2e.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install frontend
+        working-directory: apps/web
+        run: npm ci
+      - name: Build frontend against the real API
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        run: npm run build
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Start real API and production web
+        run: |
+          uvicorn europe_visa_jobs.api.app:app --host 127.0.0.1 --port 8000 > /tmp/live-api.log 2>&1 &
+          echo $! > /tmp/live-api.pid
+          (cd apps/web && npm run start -- -H 127.0.0.1 > /tmp/live-web.log 2>&1 & echo $! > /tmp/live-web.pid)
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null && curl -fsS http://127.0.0.1:3000/en >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/live-api.log || true
+          cat /tmp/live-web.log || true
+          exit 1
+      - name: Browser proves live ATS jobs reach the UI
+        working-directory: apps/web
+        run: npx playwright test --config=playwright.live.config.ts
+      - name: Live E2E diagnostics
+        if: failure()
+        run: |
+          cat /tmp/live-api.log || true
+          cat /tmp/live-web.log || true
+      - name: Upload live E2E failures
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-ingestion-e2e-failures
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -193,7 +273,7 @@ jobs:
 
   acceptance:
     runs-on: ubuntu-latest
-    needs: [test, web, postgres-integration, security]
+    needs: [test, web, postgres-integration, live-ingestion-e2e, security]
     env:
       POSTGRES_PASSWORD: visa_jobs_acceptance
     steps:
