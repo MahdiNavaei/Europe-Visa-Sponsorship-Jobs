@@ -16,11 +16,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Temporarily writable on PRs so the Windows runner can normalize package-lock.json
-# with npm 11's complete cross-platform optional-dependency metadata. The repair
-# step is removed again before merge/release.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
@@ -45,21 +42,6 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-
-      - name: Repair cross-platform npm lock metadata
-        if: github.event_name == 'pull_request'
-        shell: pwsh
-        working-directory: apps/web
-        run: |
-          npm install --package-lock-only --include=optional --ignore-scripts
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m "chore: normalize cross-platform npm lock metadata"
-            git push origin "HEAD:${{ github.head_ref }}"
-          }
 
       - name: Install backend packaging dependencies
         shell: pwsh
