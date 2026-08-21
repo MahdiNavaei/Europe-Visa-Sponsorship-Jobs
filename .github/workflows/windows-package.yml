@@ -73,6 +73,7 @@ jobs:
             --noconfirm `
             --paths src `
             --collect-all alembic `
+            --collect-submodules uvicorn `
             --collect-submodules europe_visa_jobs `
             --add-data "alembic.ini;." `
             --add-data "migrations;migrations" `
