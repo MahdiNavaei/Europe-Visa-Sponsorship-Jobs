@@ -6,6 +6,7 @@ import { BriefcaseBusiness, Building2, ChevronDown, Compass, Languages, Menu, Mo
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils/cn";
@@ -18,8 +19,9 @@ const links = [
 ] as const;
 
 function ThemeToggle() {
+  const { setTheme } = useTheme();
   const [isDark, setIsDark] = useState(false);
-  const toggle = () => { const nextDark = !document.documentElement.classList.contains("dark"); document.documentElement.classList.toggle("dark", nextDark); window.localStorage.setItem("theme", nextDark ? "dark" : "light"); setIsDark(nextDark); };
+  const toggle = () => { const nextDark = !document.documentElement.classList.contains("dark"); const nextTheme = nextDark ? "dark" : "light"; setTheme(nextTheme); window.localStorage.setItem("theme", nextTheme); setIsDark(nextDark); window.setTimeout(() => document.documentElement.classList.toggle("dark", nextDark), 0); };
   return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={toggle} title="Toggle theme">{isDark ? <Sun size={17} /> : <Moon size={17} />}</button>;
 }
 
