@@ -8,6 +8,20 @@ It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, i
 
 ![Career Radar dashboard](docs/assets/dashboard-en.png)
 
+## Windows — one-click install
+
+For most Windows users, no developer setup is needed.
+
+1. Open **GitHub Releases**.
+2. Download `CareerRadar-Setup-v1.0.0.exe`.
+3. Install and launch **Career Radar**.
+
+The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
+
+On first launch it creates a local SQLite database, fetches live ATS jobs, starts the API and web app on loopback-only ports, and opens the browser automatically. A portable ZIP and SHA-256 checksums are published with the installer as well.
+
+See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
+
 ## Why this project exists
 
 International candidates routinely lose time on vacancies that look global but later contain restrictions such as:
@@ -40,6 +54,7 @@ A company appearing in a sponsor register is **not** enough to approve every vac
 - Bilingual Next.js application (`/en`, `/fa`) with true RTL Persian
 - Light/dark themes and responsive desktop/mobile UI
 - Docker production stack
+- Dependency-free Windows installer + portable package
 - PostgreSQL migration round-trip validation
 - Chromium, Firefox, and WebKit E2E coverage
 - Accessibility, security, dependency, and public-repository audits
@@ -110,6 +125,8 @@ A deployed instance must provide a persistent PostgreSQL connection through the 
 
 **Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
 
+The Windows desktop runtime has its own local refresh cycle: first launch fetches live jobs, later launches refresh data when it is older than 24 hours, and users can trigger a refresh manually from the launcher.
+
 ## Current production source catalog
 
 The tracked v1 catalog currently includes live-verified public feeds for:
@@ -146,7 +163,7 @@ Country rules + sponsor evidence
    ↓
 Strict eligibility engine
    ↓
-PostgreSQL
+PostgreSQL / local Windows SQLite
    ├─ jobs + evidence
    ├─ companies + sponsor records
    ├─ candidates
@@ -162,7 +179,7 @@ Next.js Career Radar (EN / FA RTL)
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PHASE_2.md`](docs/PHASE_2.md), [`docs/PHASE_3.md`](docs/PHASE_3.md), and [`docs/PHASE_4.md`](docs/PHASE_4.md).
 
-## Quick start
+## Developer quick start
 
 ### Backend with SQLite
 
@@ -275,6 +292,7 @@ Release CI additionally validates:
 - Chromium / Firefox / WebKit critical flows
 - live public ATS source health
 - live ATS → PostgreSQL → API → production browser E2E
+- Windows self-contained installer build and silent-install smoke test
 - `pip-audit` and `npm audit --audit-level=high`
 - secret/local-artifact/public-repository safety
 - accessibility and responsive behavior
