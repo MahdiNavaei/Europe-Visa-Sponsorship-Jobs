@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from europe_visa_jobs.runtime import resource_path
+
 
 @dataclass(frozen=True)
 class SkillDefinition:
@@ -126,7 +128,7 @@ class SkillOntology:
 
 
 def _load_definitions(data_path: str | Path | None = None) -> tuple[SkillDefinition, ...]:
-    path = Path(data_path) if data_path else Path(__file__).resolve().parents[3] / "data" / "skills.yaml"
+    path = Path(data_path) if data_path else resource_path("data", "skills.yaml")
     if not path.is_file():
         return _SKILLS
     try:
