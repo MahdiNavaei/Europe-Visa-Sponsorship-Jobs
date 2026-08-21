@@ -6,7 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from europe_visa_jobs.db.models import CandidateJobState
-from europe_visa_jobs.tracking_schemas import ApplicationStatus, CandidateJobStateInput
+from europe_visa_jobs.tracking_schemas import (
+    ApplicationStatus,
+    CandidateJobStateInput,
+)
 
 
 class TrackingRepository:

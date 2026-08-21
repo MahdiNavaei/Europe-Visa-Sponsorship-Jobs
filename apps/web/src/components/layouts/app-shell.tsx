@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils/cn";
@@ -23,10 +23,7 @@ const links = [
 function ThemeToggle() {
   const t = useTranslations("nav");
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const isDark = mounted && resolvedTheme === "dark";
-  return <button aria-label={t("toggleTheme")} className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={() => setTheme(isDark ? "light" : "dark")} title={t("toggleTheme")}>{isDark ? <Sun size={17} /> : <Moon size={17} />}</button>;
+  return <button aria-label={t("toggleTheme")} className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} title={t("toggleTheme")}><Sun size={17} className="hidden dark:block" /><Moon size={17} className="block dark:hidden" /></button>;
 }
 
 function LanguageToggle({ locale }: { locale: Locale }) {
