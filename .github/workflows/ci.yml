@@ -6,39 +6,9 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  lockfile-repair:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          ref: phase4-release-hardening
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Regenerate and verify lockfile
-        run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --ignore-scripts --no-audit --no-fund
-      - name: Commit corrected lockfile if changed
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo "Lockfile already synchronized."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git commit -m "fix: synchronize frontend package lock"
-          git push origin HEAD:phase4-release-hardening
-
   test:
     runs-on: ubuntu-latest
     env:
