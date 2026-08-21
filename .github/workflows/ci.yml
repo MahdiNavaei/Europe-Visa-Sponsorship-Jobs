@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lockfile-repair:
@@ -15,22 +15,29 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@v4
+        with:
+          ref: phase4-release-hardening
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Regenerate lockfile from package manifest
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Verify corrected lockfile
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Upload corrected lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: corrected-package-lock
-          path: apps/web/package-lock.json
-          retention-days: 1
+      - name: Regenerate and verify lockfile
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Commit corrected lockfile if changed
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: synchronize frontend package lock"
+          git push origin HEAD:phase4-release-hardening
 
   test:
     runs-on: ubuntu-latest
@@ -41,10 +48,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -73,10 +78,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
@@ -132,10 +135,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://visa_jobs:visa_jobs_ci@127.0.0.1:5432/visa_jobs_ci
       PYTHONPATH: src:.
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -166,12 +167,10 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -181,8 +180,7 @@ jobs:
           pip-audit --local
       - name: Public repository safety audit
         run: python scripts/public_repo_audit.py
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
@@ -200,10 +198,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
