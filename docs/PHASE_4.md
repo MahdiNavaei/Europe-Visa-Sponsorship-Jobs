@@ -2,7 +2,7 @@
 
 Phase 4 turns the Phase 1–3 product into a release candidate that can be published and deployed with evidence that the full stack works outside a developer workstation.
 
-The release philosophy is simple: **green unit tests are necessary, but they are not sufficient**. A release must also survive real PostgreSQL migrations, deterministic installs, multiple browser engines, production-like containers, dependency audits, accessibility checks, performance budgets, degraded upstream sources, and a fresh-clone acceptance test.
+The release philosophy is simple: **green unit tests are necessary, but they are not sufficient**. A release must also survive real PostgreSQL migrations, deterministic installs, multiple browser engines, production-like containers, dependency audits, accessibility checks, performance budgets, degraded upstream sources, live public ATS feeds, and a fresh-clone acceptance test.
 
 ## Release gates
 
@@ -95,7 +95,38 @@ A failing ATS source must not prevent healthy sources in the same ingestion batc
 - returns a failed batch result at the end so monitoring still detects the problem
 - preserves previously active jobs when a refresh source fails
 
-### 8. Performance budgets
+### 8. Live ATS ingestion and data-path E2E
+
+Phase 4 includes a separate networked gate that deliberately does **not** mock the job data path.
+
+The gate:
+
+1. validates every ATS feed in `config/sources.json` against its public endpoint
+2. starts a fresh PostgreSQL 16 database
+3. ingests a smaller independent smoke set from live Greenhouse and Ashby feeds
+4. runs the same ingestion immediately a second time and requires an identical source/external-id key set
+5. requires live technical jobs and at least one posting updated/published within the freshness window
+6. runs the strict sponsorship/visa eligibility engine and requires at least one eligible result
+7. queries the real FastAPI `/api/v1/jobs` endpoint and verifies valid application URLs
+8. builds the production Next.js frontend against that real API
+9. opens `/en/jobs` in Chromium without API mocks
+10. requires a real ingested company/job to be visible, opens Job Detail, and validates the outbound Apply link
+
+A verified run on 2026-08-21 ingested 96 active technical jobs from the three-source smoke set; 79 were within the 60-day freshness window and 40 passed strict eligibility. The immediately repeated run returned exactly the same source/external-id key set, demonstrating idempotent upserts rather than duplicate creation.
+
+This gate verifies the complete path:
+
+`public ATS -> connector -> normalization -> PostgreSQL -> eligibility -> FastAPI -> production Next.js UI`
+
+### 9. Daily refresh behavior
+
+`.github/workflows/daily-ingest.yml` runs at `03:17 UTC` every day and can also be dispatched manually. It uses the real tracked source catalog in `config/sources.json`, migrates the persistent database, refreshes current jobs, marks disappeared source jobs inactive through the ingestion pipeline, and reports active/eligible/newest-posting counts.
+
+The workflow intentionally fails loudly if the repository does not have a `DATABASE_URL` secret. CI can prove the network ingestion path with an ephemeral PostgreSQL service, but a deployed product needs a persistent PostgreSQL database shared with the deployed API for scheduled refreshes to persist between runs.
+
+"Daily refresh" means the configured public feeds are re-read every day. It does **not** mean employers are guaranteed to publish a new eligible vacancy every calendar day.
+
+### 10. Performance budgets
 
 Lighthouse CI audits both `/en` and `/fa` production builds with release thresholds for:
 
@@ -110,7 +141,7 @@ Lighthouse CI audits both `/en` and `/fa` production builds with release thresho
 
 Reports are retained as CI artifacts.
 
-### 9. Production-like deployment stack
+### 11. Production-like deployment stack
 
 `docker-compose.production.yml` builds and runs:
 
@@ -120,7 +151,7 @@ Reports are retained as CI artifacts.
 
 All services use health checks. The frontend runs as a non-root user in its production container.
 
-### 10. Fresh-clone acceptance test
+### 12. Fresh-clone acceptance test
 
 The final acceptance job starts from a clean GitHub checkout and:
 
@@ -136,3 +167,5 @@ This is the final automated release gate.
 ## Remaining product limitation
 
 Visa and sponsorship results are deterministic, evidence-based signals. They are not legal advice and are not a guarantee that an employer will sponsor a particular applicant. Employer policy and immigration rules can change after data is collected.
+
+The source catalog is intentionally explicit and auditable rather than an unrestricted web crawler. Coverage grows by adding verified public ATS sources to `config/sources.json`.
