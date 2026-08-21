@@ -18,8 +18,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -48,8 +48,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -68,7 +68,7 @@ jobs:
         run: npm run test:e2e
       - name: Upload UI snapshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ui-snapshots
           path: apps/web/artifacts/ui/*.png
@@ -76,7 +76,7 @@ jobs:
           retention-days: 14
       - name: Upload Playwright failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-failures
           path: |
@@ -105,8 +105,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://visa_jobs:visa_jobs_ci@127.0.0.1:5432/visa_jobs_ci
       PYTHONPATH: src:.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -137,10 +137,10 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -150,7 +150,7 @@ jobs:
           pip-audit --local
       - name: Public repository safety audit
         run: python scripts/public_repo_audit.py
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -168,8 +168,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -182,7 +182,7 @@ jobs:
         run: npx --yes @lhci/cli@0.15.1 autorun --config=./lighthouserc.json
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lighthouse-reports
           path: apps/web/artifacts/lighthouse
@@ -194,7 +194,7 @@ jobs:
     needs: [test, web, postgres-integration, security]
     steps:
       - name: Checkout fresh repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Build and start production-like stack
         run: docker compose -f docker-compose.production.yml up -d --build
       - name: Wait for healthy API and web
