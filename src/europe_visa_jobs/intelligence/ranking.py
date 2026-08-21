@@ -8,6 +8,7 @@ import yaml
 
 from europe_visa_jobs.db.models import Candidate, Job
 from europe_visa_jobs.intelligence.matching import CandidateMatcher, MatchResult
+from europe_visa_jobs.runtime import resource_path
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,7 @@ class RankingConfig:
 
 
 def load_ranking_config(path: str | Path | None = None) -> RankingConfig:
-    config_path = Path(path) if path else Path(__file__).resolve().parents[3] / "config" / "ranking.yaml"
+    config_path = Path(path) if path else resource_path("config", "ranking.yaml")
     if not config_path.is_file():
         return RankingConfig()
     return RankingConfig.from_yaml(config_path)
