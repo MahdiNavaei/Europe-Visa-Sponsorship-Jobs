@@ -14,7 +14,7 @@ export function Providers({ locale, children }: { locale: Locale; children: Reac
     document.documentElement.dir = locale === "fa" ? "rtl" : "ltr";
   }, [locale]);
   return (
-    <NextIntlClientProvider locale={locale} messages={messages[locale]}>
+    <NextIntlClientProvider locale={locale} messages={messages[locale]} timeZone="UTC">
       <QueryClientProvider client={queryClient}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}

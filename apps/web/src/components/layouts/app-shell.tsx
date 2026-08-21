@@ -19,10 +19,11 @@ const links = [
 ] as const;
 
 function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
-  useEffect(() => { if (resolvedTheme) document.documentElement.classList.toggle("dark", resolvedTheme === "dark"); }, [resolvedTheme]);
-  const toggle = () => { const nextTheme = document.documentElement.classList.contains("dark") ? "light" : "dark"; setTheme(nextTheme); document.documentElement.classList.toggle("dark", nextTheme === "dark"); };
-  return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={toggle} title="Toggle theme">{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>;
+  useTheme();
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => { setIsDark(document.documentElement.classList.contains("dark")); }, []);
+  const toggle = () => { const nextDark = !document.documentElement.classList.contains("dark"); document.documentElement.classList.toggle("dark", nextDark); window.localStorage.setItem("theme", nextDark ? "dark" : "light"); setIsDark(nextDark); };
+  return <button aria-label="Toggle theme" className="focus-ring rounded-xl p-2.5 text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]" onClick={toggle} title="Toggle theme">{isDark ? <Sun size={17} /> : <Moon size={17} />}</button>;
 }
 
 function LanguageToggle({ locale }: { locale: Locale }) {
