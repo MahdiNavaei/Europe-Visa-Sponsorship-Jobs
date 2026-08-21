@@ -6,7 +6,12 @@ from europe_visa_jobs.api.app import app
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.schemas import ATSProvider, CandidateCreate, CompanySponsorEvidence, NormalizedJob
+from europe_visa_jobs.schemas import (
+    ATSProvider,
+    CandidateCreate,
+    CompanySponsorEvidence,
+    NormalizedJob,
+)
 
 
 def _seed(session_factory) -> tuple[int, int, int]:
@@ -92,5 +97,39 @@ def test_phase3_frontend_contracts(session_factory):
         assert updated.status_code == 200
         assert updated.json()["name"] == "Samira Updated"
         assert updated.json()["skills"] == ["Python", "PyTorch"]
+
+        saved = client.put(
+            f"/api/v1/candidates/{candidate_id}/jobs/{job_id}/state",
+            json={
+                "saved": True,
+                "application_status": "applied",
+                "note": "Applied through the direct employer page.",
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["candidate_id"] == candidate_id
+        assert saved.json()["job_id"] == job_id
+        assert saved.json()["saved"] is True
+        assert saved.json()["application_status"] == "applied"
+        assert saved.json()["job"]["id"] == job_id
+
+        state = client.get(f"/api/v1/candidates/{candidate_id}/jobs/{job_id}/state")
+        assert state.status_code == 200
+        assert state.json()["application_status"] == "applied"
+
+        states = client.get(
+            f"/api/v1/candidates/{candidate_id}/job-states",
+            params={"saved_only": True, "application_status": "applied"},
+        )
+        assert states.status_code == 200
+        assert len(states.json()) == 1
+        assert states.json()[0]["job_id"] == job_id
+
+        deleted = client.delete(f"/api/v1/candidates/{candidate_id}/jobs/{job_id}/state")
+        assert deleted.status_code == 204
+
+        empty_state = client.get(f"/api/v1/candidates/{candidate_id}/jobs/{job_id}/state")
+        assert empty_state.status_code == 200
+        assert empty_state.json() is None
     finally:
         app.dependency_overrides.clear()
