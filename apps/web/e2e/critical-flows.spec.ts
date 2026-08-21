@@ -199,6 +199,8 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
   await page.getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Remote is important" }).click();
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("career-radar-candidate"))).toBeNull();
+  expect(submitted).toBeNull();
   const finish = page.locator('form button[type="submit"]');
   await expect(finish).toHaveText(/See my radar/);
   await finish.click();
