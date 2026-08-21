@@ -16,8 +16,8 @@ export function useJobs(params: URLSearchParams) {
   return useQuery({ queryKey: ["jobs", params.toString()], queryFn: () => api.listJobs(params), staleTime: 30_000 });
 }
 
-export function useJobsPage(params: URLSearchParams) {
-  return useQuery({ queryKey: ["jobs-page", params.toString()], queryFn: () => api.listJobsPage(params), staleTime: 30_000 });
+export function useJobsPage(params: URLSearchParams, enabled = true) {
+  return useQuery({ queryKey: ["jobs-page", params.toString()], queryFn: () => api.listJobsPage(params), staleTime: 30_000, enabled });
 }
 
 export function useJob(id: number) {

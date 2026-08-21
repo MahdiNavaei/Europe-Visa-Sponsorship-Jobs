@@ -77,6 +77,7 @@ def list_jobs(
     company_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=200),
     min_visa_score: float | None = Query(default=None, ge=0, le=100),
+    sort: str = Query(default="newest", pattern="^(newest|visa)$"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[JobRead]:
@@ -90,6 +91,7 @@ def list_jobs(
         company_id=company_id,
         query=query,
         min_eligibility_score=min_visa_score,
+        sort=sort,
         limit=limit,
         offset=offset,
     )
@@ -230,6 +232,7 @@ def _rank_recommendations(
     query: str | None,
     min_score: float,
     include_unknown: bool,
+    sort: str,
 ) -> tuple[list[JobRecommendation], int]:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
@@ -243,6 +246,23 @@ def _rank_recommendations(
         query=query,
     )
     ranked = [item for item in engine.recommend(candidate, jobs, limit=500) if item.total_score >= min_score]
+    if sort == "newest":
+        ranked.sort(
+            key=lambda item: (
+                -(item.job.posted_at.timestamp() if item.job.posted_at else 0),
+                -item.total_score,
+                item.job.id,
+            )
+        )
+    elif sort == "visa":
+        ranked.sort(
+            key=lambda item: (
+                -item.match.visa_score,
+                -item.total_score,
+                -(item.job.posted_at.timestamp() if item.job.posted_at else 0),
+                item.job.id,
+            )
+        )
     return ranked[offset : offset + limit], len(ranked)
 
 
@@ -271,6 +291,7 @@ def recommendations(
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
+    sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> list[JobRecommendationRead]:
     ranked, total = _rank_recommendations(
         candidate_id,
@@ -282,6 +303,7 @@ def recommendations(
         query=query,
         min_score=min_score,
         include_unknown=include_unknown,
+        sort=sort,
     )
     response.headers["X-Total-Count"] = str(total)
     return [_recommendation_read(item) for item in ranked]
@@ -300,6 +322,7 @@ def explain_recommendations(
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
+    sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> RecommendationExplanationRead:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
@@ -316,6 +339,7 @@ def explain_recommendations(
         query=query,
         min_score=min_score,
         include_unknown=include_unknown,
+        sort=sort,
     )
     response.headers["X-Total-Count"] = str(total)
     return RecommendationExplanationRead(

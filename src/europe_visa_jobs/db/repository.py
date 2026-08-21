@@ -163,6 +163,7 @@ class Repository:
         company_id: int | None = None,
         query: str | None = None,
         min_eligibility_score: float | None = None,
+        sort: str = "newest",
         limit: int = 100,
         offset: int = 0,
     ) -> list[Job]:
@@ -186,7 +187,15 @@ class Repository:
             )
         if min_eligibility_score is not None:
             stmt = stmt.where(Job.eligibility_score >= min_eligibility_score)
-        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit).offset(offset)
+        if sort == "visa":
+            stmt = stmt.order_by(
+                Job.eligibility_score.desc().nullslast(),
+                Job.posted_at.desc().nullslast(),
+                Job.id.desc(),
+            )
+        else:
+            stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+        stmt = stmt.limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
 
     def count_jobs(
