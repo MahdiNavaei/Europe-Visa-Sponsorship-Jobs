@@ -84,3 +84,12 @@ jobs:
 
       - name: E2E tests
         run: npm run test:e2e
+
+      - name: Upload UI snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: apps/web/artifacts/ui/*.png
+          if-no-files-found: warn
+          retention-days: 14
