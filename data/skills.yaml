@@ -1,0 +1,122 @@
+# Curated, deterministic skill ontology. Add aliases here instead of changing matching code.
+skills:
+  - canonical: Python
+    aliases: [python, python3, python programming]
+    categories: [programming]
+  - canonical: Java
+    aliases: [java]
+    categories: [programming]
+  - canonical: JavaScript
+    aliases: [javascript, java script, js]
+    categories: [programming]
+  - canonical: TypeScript
+    aliases: [typescript, type script, ts]
+    categories: [programming]
+  - canonical: Go
+    aliases: [golang, go language]
+    categories: [programming]
+  - canonical: Rust
+    aliases: [rust programming]
+    categories: [programming]
+  - canonical: C++
+    aliases: [c++, cpp]
+    categories: [programming]
+  - canonical: SQL
+    aliases: [sql, structured query language]
+    categories: [data]
+  - canonical: PyTorch
+    aliases: [pytorch, torch, pytorch framework]
+    categories: [machine_learning]
+  - canonical: TensorFlow
+    aliases: [tensorflow, tensor flow]
+    categories: [machine_learning]
+  - canonical: scikit-learn
+    aliases: [scikit-learn, sklearn, scikit learn]
+    categories: [machine_learning]
+  - canonical: LLM
+    aliases: [llm, large language model, large language models, generative ai, genai, generative artificial intelligence]
+    categories: [machine_learning]
+  - canonical: RAG
+    aliases: [rag, retrieval augmented generation, retrieval-augmented generation]
+    categories: [machine_learning]
+  - canonical: Natural Language Processing
+    aliases: [nlp, natural language processing]
+    categories: [machine_learning]
+  - canonical: Computer Vision
+    aliases: [computer vision, cv models]
+    categories: [machine_learning]
+  - canonical: MLflow
+    aliases: [mlflow, ml flow]
+    categories: [machine_learning]
+  - canonical: Kubernetes
+    aliases: [kubernetes, k8s]
+    categories: [cloud]
+  - canonical: Docker
+    aliases: [docker, docker containers]
+    categories: [cloud]
+  - canonical: AWS
+    aliases: [aws, amazon web services]
+    categories: [cloud]
+  - canonical: Azure
+    aliases: [azure, microsoft azure]
+    categories: [cloud]
+  - canonical: Google Cloud
+    aliases: [google cloud, gcp]
+    categories: [cloud]
+  - canonical: Terraform
+    aliases: [terraform]
+    categories: [cloud]
+  - canonical: CI/CD
+    aliases: [ci/cd, cicd, continuous integration, continuous delivery]
+    categories: [devops]
+  - canonical: Linux
+    aliases: [linux]
+    categories: [infrastructure]
+  - canonical: Git
+    aliases: [git, git version control]
+    categories: [tools]
+  - canonical: React
+    aliases: [react, react.js, reactjs]
+    categories: [frontend]
+  - canonical: Vue.js
+    aliases: [vue, vue.js, vuejs]
+    categories: [frontend]
+  - canonical: Angular
+    aliases: [angular]
+    categories: [frontend]
+  - canonical: Node.js
+    aliases: [node, node.js, nodejs]
+    categories: [backend]
+  - canonical: Django
+    aliases: [django]
+    categories: [backend]
+  - canonical: FastAPI
+    aliases: [fastapi, fast api]
+    categories: [backend]
+  - canonical: Spring
+    aliases: [spring boot, spring framework]
+    categories: [backend]
+  - canonical: PostgreSQL
+    aliases: [postgresql, postgres, postgre sql]
+    categories: [databases]
+  - canonical: Redis
+    aliases: [redis]
+    categories: [databases]
+  - canonical: Kafka
+    aliases: [kafka, apache kafka]
+    categories: [data]
+  - canonical: Spark
+    aliases: [spark, apache spark, pyspark]
+    categories: [data]
+  - canonical: Airflow
+    aliases: [airflow, apache airflow]
+    categories: [data]
+  - canonical: dbt
+    aliases: [dbt, data build tool]
+    categories: [data]
+  - canonical: Prometheus
+    aliases: [prometheus]
+    categories: [observability]
+  - canonical: Grafana
+    aliases: [grafana]
+    categories: [observability]

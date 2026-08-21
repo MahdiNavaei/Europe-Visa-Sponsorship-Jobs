@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs import __version__
@@ -21,6 +21,7 @@ from europe_visa_jobs.schemas import (
     JobRead,
     JobRecommendationRead,
     RecommendationExplanationRead,
+    RecommendationScoresRead,
     StatsRead,
 )
 
@@ -56,14 +57,16 @@ def list_jobs(
     session: SessionDep,
     country: str | None = None,
     status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+    visa_status: EligibilityStatus | None = None,
     job_family: str | None = None,
+    category: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[JobRead]:
     jobs = Repository(session).list_jobs(
         country=country,
-        status=status,
-        job_family=job_family,
+        status=visa_status if visa_status is not None else status,
+        job_family=job_family or category,
         limit=limit,
         offset=offset,
     )
@@ -97,6 +100,14 @@ def _recommendation_read(item: JobRecommendation) -> JobRecommendationRead:
     match = item.match
     return JobRecommendationRead(
         job_id=item.job.id,
+        scores=RecommendationScoresRead(
+            overall=item.total_score,
+            visa=round(match.visa_score * 100, 2),
+            skill=round(match.skill_score, 2),
+            experience=round(match.experience_score, 2),
+            country=round(match.country_score * 100, 2),
+            company=round(match.company_score, 2),
+        ),
         total_score=item.total_score,
         visa_score=round(match.visa_score * 100, 2),
         skill_score=round(match.skill_score, 2),
@@ -135,20 +146,29 @@ def get_candidate(candidate_id: int, session: SessionDep) -> CandidateRead:
     return CandidateRead.model_validate(item)
 
 
-def _recommendations(
+def _rank_recommendations(
     candidate_id: int,
     session: Session,
     *,
     limit: int,
+    offset: int,
+    country: str | None,
+    role: str | None,
+    min_score: float,
     include_unknown: bool,
-) -> list[JobRecommendationRead]:
+) -> tuple[list[JobRecommendation], int]:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
     engine = RankingEngine()
-    jobs = repo.list_recommendation_jobs(include_unknown=include_unknown)
-    return [_recommendation_read(item) for item in engine.recommend(candidate, jobs, limit=limit)]
+    jobs = repo.list_recommendation_jobs(
+        include_unknown=include_unknown,
+        country=country,
+        role=role,
+    )
+    ranked = [item for item in engine.recommend(candidate, jobs, limit=500) if item.total_score >= min_score]
+    return ranked[offset : offset + limit], len(ranked)
 
 
 @app.get("/api/v1/recommendations/{candidate_id}", response_model=list[JobRecommendationRead])
@@ -156,10 +176,26 @@ def _recommendations(
 def recommendations(
     candidate_id: int,
     session: SessionDep,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    country: str | None = None,
+    role: str | None = None,
+    min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
 ) -> list[JobRecommendationRead]:
-    return _recommendations(candidate_id, session, limit=limit, include_unknown=include_unknown)
+    ranked, total = _rank_recommendations(
+        candidate_id,
+        session,
+        limit=limit,
+        offset=offset,
+        country=country,
+        role=role,
+        min_score=min_score,
+        include_unknown=include_unknown,
+    )
+    response.headers["X-Total-Count"] = str(total)
+    return [_recommendation_read(item) for item in ranked]
 
 
 @app.get("/api/v1/recommendations/{candidate_id}/explain", response_model=RecommendationExplanationRead)
@@ -167,7 +203,12 @@ def recommendations(
 def explain_recommendations(
     candidate_id: int,
     session: SessionDep,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    country: str | None = None,
+    role: str | None = None,
+    min_score: float = Query(default=0, ge=0, le=100),
     include_unknown: bool = False,
 ) -> RecommendationExplanationRead:
     repo = Repository(session)
@@ -175,11 +216,21 @@ def explain_recommendations(
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
     engine = RankingEngine()
-    recommendations = engine.recommend(candidate, repo.list_recommendation_jobs(include_unknown=include_unknown), limit=limit)
+    ranked, total = _rank_recommendations(
+        candidate_id,
+        session,
+        limit=limit,
+        offset=offset,
+        country=country,
+        role=role,
+        min_score=min_score,
+        include_unknown=include_unknown,
+    )
+    response.headers["X-Total-Count"] = str(total)
     return RecommendationExplanationRead(
         candidate=CandidateRead.model_validate(candidate),
         weights=engine.config.as_dict(),
-        recommendations=[_recommendation_read(item) for item in recommendations],
+        recommendations=[_recommendation_read(item) for item in ranked],
     )
 
 

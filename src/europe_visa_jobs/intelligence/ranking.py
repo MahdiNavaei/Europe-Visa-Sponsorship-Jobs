@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 from europe_visa_jobs.db.models import Candidate, Job
 from europe_visa_jobs.intelligence.matching import CandidateMatcher, MatchResult
@@ -22,6 +26,34 @@ class RankingConfig:
     def as_dict(self) -> dict[str, float]:
         return {"visa": self.visa, "skill": self.skill, "experience": self.experience, "country": self.country, "company": self.company}
 
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> RankingConfig:
+        payload: Any = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("ranking configuration must be a YAML mapping")
+
+        def weight(name: str) -> float:
+            key = f"{name}_score"
+            item = payload.get(key)
+            if not isinstance(item, dict) or "weight" not in item:
+                raise ValueError(f"ranking configuration is missing {key}.weight")
+            return float(item["weight"])
+
+        return cls(
+            visa=weight("visa"),
+            skill=weight("skill"),
+            experience=weight("experience"),
+            country=weight("country"),
+            company=weight("company"),
+        )
+
+
+def load_ranking_config(path: str | Path | None = None) -> RankingConfig:
+    config_path = Path(path) if path else Path(__file__).resolve().parents[3] / "config" / "ranking.yaml"
+    if not config_path.is_file():
+        return RankingConfig()
+    return RankingConfig.from_yaml(config_path)
+
 
 @dataclass(frozen=True)
 class JobRecommendation:
@@ -31,8 +63,13 @@ class JobRecommendation:
 
 
 class RankingEngine:
-    def __init__(self, config: RankingConfig | None = None, matcher: CandidateMatcher | None = None) -> None:
-        self.config = config or RankingConfig()
+    def __init__(
+        self,
+        config: RankingConfig | None = None,
+        matcher: CandidateMatcher | None = None,
+        config_path: str | Path | None = None,
+    ) -> None:
+        self.config = config or load_ranking_config(config_path)
         self.matcher = matcher or CandidateMatcher()
 
     def recommend(self, candidate: Candidate, jobs: list[Job], *, limit: int = 100) -> list[JobRecommendation]:

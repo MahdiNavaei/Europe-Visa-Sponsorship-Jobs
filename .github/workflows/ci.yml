@@ -33,7 +33,10 @@ jobs:
         run: python -m compileall -q src
 
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests scripts
+
+      - name: Type check
+        run: mypy src scripts --ignore-missing-imports
 
       - name: Migration smoke test
         env:

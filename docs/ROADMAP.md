@@ -30,7 +30,7 @@ The project is intentionally divided into four delivery phases.
 - [x] Optional scheduled ingestion workflow
 - [x] No LLM / no paid AI API dependency
 
-## Phase 2 — Candidate Matching & Intelligence
+## Phase 2 — Candidate Matching & Intelligence ✅
 
 - [x] Candidate profile
 - [x] Role preferences and experience level

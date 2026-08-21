@@ -46,7 +46,7 @@ Candidate input can use aliases. For example, `python3`, `Torch`, `GenAI`, and `
 
 ## Skill ontology
 
-`SkillOntology` is a reviewed taxonomy in `intelligence/ontology.py`. Each definition has a canonical name, category, and aliases. Extraction uses case-insensitive, boundary-aware regular expressions and returns stable, de-duplicated output.
+`SkillOntology` loads the reviewed taxonomy from [`data/skills.yaml`](../data/skills.yaml). Each definition has a canonical name, category, and aliases. Extraction uses case-insensitive, boundary-aware regular expressions and returns stable, de-duplicated output. A built-in fallback keeps installed packages safe if the repository data file is unavailable.
 
 The ontology currently covers programming, machine learning, cloud, infrastructure, frontend/backend, databases, data, DevOps, and observability skills. Unknown candidate-entered skills are preserved as labels; only known ontology skills are extracted from job text.
 
@@ -70,7 +70,7 @@ Hard restrictions remain warnings and never become positive sponsorship evidence
 
 ## Ranking
 
-The default ranking weights are configurable through `RankingConfig`:
+The default ranking weights are stored in [`config/ranking.yaml`](../config/ranking.yaml) and loaded through `RankingConfig`/`load_ranking_config`. Applications can still inject `RankingConfig` directly for tests or tenant-specific policies:
 
 | Component | Weight |
 |---|---:|
@@ -92,9 +92,9 @@ Negative signals include no sponsorship, existing-work-rights requirements, EU/E
 
 The score is a signal summary, not a legal guarantee. Vacancy-level evidence remains separate and auditable.
 
-## API
+## Frontend API contract
 
-Both `/api/v1/...` and the short paths in the Phase 2 brief are available. The versioned paths are the documented interface:
+The versioned endpoints are the stable Phase 3 interface. Both `/api/v1/...` and the short paths in the Phase 2 brief are available:
 
 ```http
 POST /api/v1/candidates
@@ -103,10 +103,25 @@ GET  /api/v1/recommendations/{candidate_id}
 GET  /api/v1/recommendations/{candidate_id}/explain
 ```
 
-Recommendations return the job, all component scores, skill coverage, matched/missing skills, reasons, and warnings. The default recommendation catalog contains active Phase 1 eligible jobs. `include_unknown=true` is available for research and audit use.
+Recommendation responses remain lists for backward compatibility. Each recommendation includes a complete `job` payload, grouped `scores` (`overall`, `visa`, `skill`, `experience`, `country`, and `company`, all 0–100), skill coverage, matched/missing skills, `reasons`, and `warnings`. Recommendation filters are `country`, `role`, and `min_score`; `limit` and `offset` provide simple pagination, and `X-Total-Count` reports the filtered result count. `include_unknown=true` is opt-in for research and audit use. The jobs endpoint keeps `status`, `country`, and `job_family` and also accepts the UI aliases `visa_status` and `category`.
+
+Example item:
+
+```json
+{
+  "job": {"id": 42, "title": "Senior AI Engineer"},
+  "scores": {"overall": 92, "visa": 100, "skill": 90, "experience": 88, "country": 100, "company": 75},
+  "reasons": ["The job passed the strict sponsorship eligibility gate."],
+  "warnings": ["Missing required skills: Kubernetes."]
+}
+```
 
 ## Evaluation
 
-`tests/fixtures/` contains a representative senior ML candidate, three jobs, and an expected ranking. Regression tests verify alias normalization, ranking order, missing-skill warnings, excluded locations, API serialization, and the persisted profile fields.
+`tests/fixtures/` contains a representative senior ML candidate, three jobs, and an expected ranking. Regression tests verify alias normalization, ranking order, missing-skill warnings, excluded locations, API serialization, pagination/filter behavior, configuration loading, demo seeding, and persisted profile fields.
+
+## Demo usage
+
+Run `python scripts/seed_demo.py` after installing the project. It creates three fictional candidates and three fictional European jobs. Every demo description contains `DEMO SAMPLE DATA ONLY`; the dataset is not evidence about real employers, vacancies, or sponsorship status. The script is idempotent for candidates and upserts the sample jobs.
 
 This layer is ready for Phase 3 to build onboarding, search, job detail, and explanation views without duplicating backend scoring logic.

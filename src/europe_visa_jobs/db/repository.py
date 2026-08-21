@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from europe_visa_jobs.db.models import Candidate, Company, Job, JobEvidence, SponsorRecord
@@ -13,9 +13,10 @@ from europe_visa_jobs.schemas import (
     CompanySponsorEvidence,
     EligibilityAssessment,
     EligibilityStatus,
+    JobFamily,
     NormalizedJob,
 )
-from europe_visa_jobs.utils import normalize_company_name, normalize_country
+from europe_visa_jobs.utils import classify_role, normalize_company_name, normalize_country
 
 
 class Repository:
@@ -172,7 +173,14 @@ class Repository:
         stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
 
-    def list_recommendation_jobs(self, *, include_unknown: bool = False, limit: int = 500) -> list[Job]:
+    def list_recommendation_jobs(
+        self,
+        *,
+        include_unknown: bool = False,
+        limit: int = 500,
+        country: str | None = None,
+        role: str | None = None,
+    ) -> list[Job]:
         statuses = [EligibilityStatus.ELIGIBLE.value]
         if include_unknown:
             statuses.append(EligibilityStatus.UNKNOWN.value)
@@ -180,9 +188,19 @@ class Repository:
             select(Job)
             .options(joinedload(Job.company), joinedload(Job.evidence))
             .where(Job.active.is_(True), Job.eligibility_status.in_(statuses))
-            .order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
-            .limit(limit)
         )
+        if country:
+            stmt = stmt.where(Job.country == country)
+        if role:
+            try:
+                family = JobFamily(role)
+            except ValueError:
+                family = classify_role(role)
+            if family is not JobFamily.OTHER:
+                stmt = stmt.where(Job.job_family == family.value)
+            else:
+                stmt = stmt.where(or_(Job.title.ilike(f"%{role}%"), Job.job_family == role))
+        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit)
         return list(self.session.scalars(stmt).unique())
 
     def get_job(self, job_id: int) -> Job | None:
@@ -208,6 +226,9 @@ class Repository:
 
     def get_candidate(self, candidate_id: int) -> Candidate | None:
         return self.session.get(Candidate, candidate_id)
+
+    def get_candidate_by_name(self, name: str) -> Candidate | None:
+        return self.session.scalar(select(Candidate).where(Candidate.name == name))
 
     def list_companies(self, *, country: str | None = None, limit: int = 100) -> list[Company]:
         stmt = select(Company)

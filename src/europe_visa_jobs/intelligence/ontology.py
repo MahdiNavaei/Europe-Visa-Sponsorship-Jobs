@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -68,11 +72,16 @@ def _pattern(alias: str) -> re.Pattern[str]:
 class SkillOntology:
     """Curated canonical skills with deterministic alias normalization and extraction."""
 
-    def __init__(self, definitions: tuple[SkillDefinition, ...] = _SKILLS) -> None:
-        self._definitions = definitions
-        self._by_canonical = {item.canonical_name.casefold(): item for item in definitions}
+    def __init__(
+        self,
+        definitions: tuple[SkillDefinition, ...] | None = None,
+        data_path: str | Path | None = None,
+    ) -> None:
+        loaded_definitions = definitions if definitions is not None else _load_definitions(data_path)
+        self._definitions = loaded_definitions
+        self._by_canonical = {item.canonical_name.casefold(): item for item in loaded_definitions}
         self._aliases: list[tuple[SkillDefinition, re.Pattern[str]]] = []
-        for definition in definitions:
+        for definition in loaded_definitions:
             for alias in sorted({definition.canonical_name, *definition.aliases}, key=len, reverse=True):
                 self._aliases.append((definition, _pattern(alias)))
 
@@ -114,3 +123,24 @@ class SkillOntology:
     def category(self, canonical_name: str) -> str | None:
         definition = self._by_canonical.get(canonical_name.casefold())
         return definition.category if definition else None
+
+
+def _load_definitions(data_path: str | Path | None = None) -> tuple[SkillDefinition, ...]:
+    path = Path(data_path) if data_path else Path(__file__).resolve().parents[3] / "data" / "skills.yaml"
+    if not path.is_file():
+        return _SKILLS
+    try:
+        payload: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
+        rows = payload.get("skills", []) if isinstance(payload, dict) else []
+        definitions = tuple(
+            SkillDefinition(
+                canonical_name=str(row["canonical"]),
+                category=str((row.get("categories") or [row.get("category", "other")])[0]),
+                aliases=tuple(str(alias) for alias in row.get("aliases", [])),
+            )
+            for row in rows
+            if isinstance(row, dict) and row.get("canonical")
+        )
+        return definitions or _SKILLS
+    except (OSError, TypeError, KeyError, IndexError, yaml.YAMLError):
+        return _SKILLS

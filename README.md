@@ -150,6 +150,21 @@ docker compose up --build
 
 API: `http://localhost:8000`
 
+### Run the fictional demo dataset
+
+The demo records are deterministic and clearly marked as sample data. They do not assert that
+any named company sponsors visas or that any vacancy is real.
+
+```bash
+python scripts/seed_demo.py
+```
+
+To use a separate local database:
+
+```bash
+python scripts/seed_demo.py --database-url sqlite:///./demo.db
+```
+
 ## Configure job sources
 
 Copy the example:
@@ -211,6 +226,7 @@ Filters:
 GET /api/v1/jobs?country=Germany
 GET /api/v1/jobs?country=Netherlands&job_family=ai_ml
 GET /api/v1/jobs?status=unknown
+GET /api/v1/jobs?category=ai_ml&visa_status=eligible&limit=20&offset=20
 ```
 
 ### Job evidence
@@ -239,13 +255,37 @@ GET /api/v1/countries
 GET /api/v1/stats
 ```
 
+### Candidate recommendations
+
+```http
+POST /api/v1/candidates
+GET  /api/v1/candidates/{candidate_id}
+GET  /api/v1/recommendations/{candidate_id}
+GET  /api/v1/recommendations/{candidate_id}/explain
+```
+
+Recommendation queries support `country`, `role`, `min_score`, `limit`, `offset`, and
+`include_unknown`. Responses remain JSON lists for backward compatibility and include an
+`X-Total-Count` header. Each item includes a frontend-friendly `scores` object alongside the
+legacy flat score fields:
+
+```json
+{
+  "job": {"id": 42, "title": "Senior AI Engineer"},
+  "scores": {"overall": 92, "visa": 100, "skill": 90, "experience": 88, "country": 100, "company": 75},
+  "reasons": ["The job passed the strict sponsorship eligibility gate."],
+  "warnings": ["Missing required skills: Kubernetes."]
+}
+```
+
 ## Tests
 
 ```bash
 pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
+mypy src --ignore-missing-imports
 ```
 
-CI also runs compilation, Ruff, and the coverage gate on pushes and pull requests.
+CI also runs compilation, Ruff, mypy, migrations, coverage, and the Docker image build on pull requests.
 
 ## Phase 2 status
 
@@ -259,9 +299,12 @@ Implemented:
 - Required/preferred job skill analysis and experience/seniority extraction
 - Candidate-specific visa, skill, role, experience, country, and company matching
 - Configurable 35/30/15/10/10 recommendation ranking
+- File-backed ranking weights in [`config/ranking.yaml`](config/ranking.yaml)
+- File-backed skill aliases/categories in [`data/skills.yaml`](data/skills.yaml)
 - Company friendliness scoring from Phase 1 sponsor and vacancy evidence
 - Explainable recommendation and detailed explanation endpoints
 - Fixture-backed ranking regression tests for Phase 2
+- Deterministic fictional demo seed script for local UI development
 
 See [`docs/PHASE_2.md`](docs/PHASE_2.md) for the matching architecture, scoring formula, and API examples.
 

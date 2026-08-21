@@ -234,8 +234,20 @@ class StatsRead(BaseModel):
     companies: int
 
 
+class RecommendationScoresRead(BaseModel):
+    """Grouped scores for frontend clients; flat score fields remain for compatibility."""
+
+    overall: float = Field(ge=0, le=100)
+    visa: float = Field(ge=0, le=100)
+    skill: float = Field(ge=0, le=100)
+    experience: float = Field(ge=0, le=100)
+    country: float = Field(ge=0, le=100)
+    company: float = Field(ge=0, le=100)
+
+
 class JobRecommendationRead(BaseModel):
     job_id: int
+    scores: RecommendationScoresRead
     total_score: float = Field(ge=0, le=100)
     visa_score: float = Field(ge=0, le=100)
     skill_score: float = Field(ge=0, le=100)
