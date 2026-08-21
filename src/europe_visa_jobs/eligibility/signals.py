@@ -18,7 +18,7 @@ class SponsorshipSignalDetector:
     """Deterministic job-description signal detector with hard-negative precedence."""
 
     HARD_NEGATIVE_PATTERNS: tuple[tuple[str, str, str], ...] = (
-        ("no_sponsorship", r"\b(?:do(?:es)?\s+not|don['’]?t|cannot|can['’]?t|unable\s+to|not\s+able\s+to|will\s+not|won['’]?t)\s+(?:provide|offer|support|sponsor)?\s*(?:visa|work\s+permit|immigration)\s*(?:sponsorship|support)?\b", "Employer explicitly says sponsorship or immigration support is unavailable."),
+        ("no_sponsorship", r"\b(?:do(?:es)?\s+not|don(?:'|\u2019)?t|cannot|can(?:'|\u2019)?t|unable\s+to|not\s+able\s+to|will\s+not|won(?:'|\u2019)?t)\s+(?:provide|offer|support|sponsor)?\s*(?:visa|work\s+permit|immigration)\s*(?:sponsorship|support)?\b", "Employer explicitly says sponsorship or immigration support is unavailable."),
         ("no_sponsorship_direct", r"\bno\s+(?:visa\s+)?sponsorship\b|\b(?:visa\s+)?sponsorship\s+(?:is|will\s+be)\s+not\s+(?:available|provided|offered)\b", "Vacancy explicitly states that sponsorship is unavailable."),
         ("without_sponsorship", r"\b(?:authorized|authorised|eligible)\s+to\s+work\b.{0,80}\bwithout\s+(?:current\s+or\s+future\s+)?sponsorship\b", "Existing work authorization without sponsorship is required."),
         ("existing_work_rights", r"\bmust\s+(?:already\s+)?(?:have|hold)\s+(?:the\s+)?(?:legal\s+)?right\s+to\s+work\b", "Existing local work rights are required."),
