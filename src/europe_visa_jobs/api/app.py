@@ -5,6 +5,7 @@ from typing import Annotated
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs import __version__
@@ -24,6 +25,7 @@ from europe_visa_jobs.schemas import (
     RecommendationScoresRead,
     StatsRead,
 )
+from europe_visa_jobs.settings import get_settings
 
 
 @asynccontextmanager
@@ -37,6 +39,15 @@ app = FastAPI(
     version=__version__,
     description="Strict, evidence-based European tech jobs for candidates who need sponsorship.",
     lifespan=lifespan,
+)
+
+_settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list({"http://localhost:3000", "http://127.0.0.1:3000", _settings.web_origin}),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 SessionDep = Annotated[Session, Depends(get_db)]

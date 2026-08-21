@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./europe_visa_jobs.db"
     log_level: str = "INFO"
     request_timeout_seconds: float = 20.0
+    web_origin: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

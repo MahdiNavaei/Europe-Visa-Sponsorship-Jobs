@@ -255,6 +255,27 @@ GET /api/v1/countries
 GET /api/v1/stats
 ```
 
+## Phase 3 web application
+
+The professional bilingual Career Radar frontend lives in [`apps/web`](apps/web). It consumes the Phase 2 API for jobs, evidence, candidate profiles, recommendations, and explanations without duplicating backend intelligence.
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000/en`. Persian RTL is available at `/fa`; theme preference is persisted locally. Start the API at `http://localhost:8000` first for live data, or set `NEXT_PUBLIC_API_URL` for another API origin. The backend accepts the browser origin through `WEB_ORIGIN`.
+
+Frontend verification:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npx playwright test
+```
+
 ### Candidate recommendations
 
 ```http
@@ -307,6 +328,8 @@ Implemented:
 - Deterministic fictional demo seed script for local UI development
 
 See [`docs/PHASE_2.md`](docs/PHASE_2.md) for the matching architecture, scoring formula, and API examples.
+
+See [`docs/PHASE_3.md`](docs/PHASE_3.md) for the UI architecture, design system, internationalization, and frontend verification flow.
 
 ## Current job families
 

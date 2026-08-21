@@ -1,5 +1,10 @@
 __pycache__/
 *.py[cod]
+.coverage
+apps/web/node_modules/
+apps/web/.next/
+apps/web/playwright-report/
+apps/web/test-results/
 .pytest_cache/
 .ruff_cache/
 .coverage
