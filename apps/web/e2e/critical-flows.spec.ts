@@ -5,7 +5,7 @@ test("landing page opens and language switch changes direction", async ({ page }
   await expect(page.getByRole("heading", { name: /Find European jobs/i })).toBeVisible();
   await page.goto("/fa");
   await expect(page.locator("html")).toHaveAttribute("lang", "fa");
-  await expect(page.locator("[dir='rtl']")).toBeVisible();
+  await expect(page.locator("[dir='rtl']").first()).toBeVisible();
 });
 
 test("jobs experience has filters and remains usable without the API", async ({ page }) => {
@@ -63,7 +63,7 @@ test("onboarding creates a profile and loads the dashboard shortlist", async ({ 
 
 test("job filters and detail page use the typed API surface", async ({ page }) => {
   const job = { id: 7, company_id: 3, external_id: "demo-7", provider: "greenhouse", source_slug: "demo", company_name: "Northstar Labs", title: "Senior AI Engineer", description: "Visa sponsorship.", location: "Berlin, Germany", country: "Germany", department: null, employment_type: "Full time", workplace_type: "Hybrid", apply_url: "https://example.invalid/apply", job_url: null, posted_at: "2026-01-01T00:00:00Z", job_family: "ai_ml", required_skills: ["Python"], preferred_skills: [], min_experience_years: 4, seniority: "senior", eligibility_status: "eligible", eligibility_score: 94 };
-  await page.route("**/api/v1/jobs*", async (route) => {
+  await page.route("**/api/v1/jobs**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/7")) return route.fulfill({ json: { ...job, evidence: [] } });
     return route.fulfill({ json: [job] });
