@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs import __version__
+from europe_visa_jobs.api.tracking import router as tracking_router
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db, init_db
 from europe_visa_jobs.eligibility import CountryRulesRegistry
@@ -51,6 +52,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(tracking_router)
 
 SessionDep = Annotated[Session, Depends(get_db)]
 
