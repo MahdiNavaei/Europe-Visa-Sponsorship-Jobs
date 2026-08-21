@@ -28,14 +28,25 @@ async def _ingest(path: str) -> None:
     settings = get_settings()
     sources = load_sources(path)
     timeout = httpx.Timeout(settings.request_timeout_seconds)
+    failures: list[str] = []
+
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         for source in sources:
-            with SessionLocal() as session:
-                run = await ingest_source(session, source, client=client)
+            try:
+                with SessionLocal() as session:
+                    run = await ingest_source(session, source, client=client)
                 print(
                     f"{source.provider.value}:{source.slug} fetched={run.fetched_count} "
                     f"stored={run.stored_count} status={run.status}"
                 )
+            except Exception as exc:
+                label = f"{source.provider.value}:{source.slug}"
+                failures.append(label)
+                print(f"{label} fetched=0 stored=0 status=failed error={str(exc)[:300]}")
+
+    if failures:
+        joined = ", ".join(failures)
+        raise RuntimeError(f"{len(failures)} source(s) failed after processing the full batch: {joined}")
 
 
 def main() -> None:
