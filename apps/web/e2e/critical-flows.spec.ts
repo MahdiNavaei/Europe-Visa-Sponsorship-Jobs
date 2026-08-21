@@ -162,12 +162,7 @@ test("dark mode persists after navigation and reload", async ({ page }) => {
 test("full six-step onboarding creates a candidate and lands on Career Radar", async ({ page }) => {
   test.setTimeout(60_000);
   let submitted: Record<string, unknown> | null = null;
-  await page.addInitScript(() => {
-    if (window.sessionStorage.getItem("career-radar-e2e-fresh") !== "1") {
-      window.localStorage.removeItem("career-radar-candidate");
-      window.sessionStorage.setItem("career-radar-e2e-fresh", "1");
-    }
-  });
+  await page.addInitScript(() => window.localStorage.removeItem("career-radar-candidate"));
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -185,6 +180,7 @@ test("full six-step onboarding creates a candidate and lands on Career Radar", a
   });
 
   await page.goto("/en/onboarding");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("career-radar-candidate"))).toBeNull();
   await page.getByPlaceholder(/Samira/i).fill("Samira Ahmadi");
   await page.getByRole("button", { name: "AI / Machine Learning" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
