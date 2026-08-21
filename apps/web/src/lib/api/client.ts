@@ -1,6 +1,8 @@
 import type {
   Candidate,
   CandidateInput,
+  CandidateJobState,
+  CandidateJobStateInput,
   Company,
   CompanyIntelligence,
   Job,
@@ -54,6 +56,14 @@ export const api = {
   updateCandidate: (id: number, input: CandidateInput) =>
     request<Candidate>(`/api/v1/candidates/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   getCandidate: (id: number) => request<Candidate>(`/api/v1/candidates/${id}`),
+  listJobStates: (candidateId: number) => request<CandidateJobState[]>(`/api/v1/candidates/${candidateId}/job-states`),
+  getJobState: (candidateId: number, jobId: number) =>
+    request<CandidateJobState | null>(`/api/v1/candidates/${candidateId}/jobs/${jobId}/state`),
+  updateJobState: (candidateId: number, jobId: number, input: CandidateJobStateInput) =>
+    request<CandidateJobState>(`/api/v1/candidates/${candidateId}/jobs/${jobId}/state`, { method: "PUT", body: JSON.stringify(input) }),
+  deleteJobState: async (candidateId: number, jobId: number) => {
+    await fetchResponse(`/api/v1/candidates/${candidateId}/jobs/${jobId}/state`, { method: "DELETE" });
+  },
   getRecommendations: async (id: number, params: URLSearchParams = new URLSearchParams()) =>
     (await requestPage<Recommendation>(`/api/v1/recommendations/${id}?${params.toString()}`)).items,
   getRecommendationsPage: (id: number, params: URLSearchParams = new URLSearchParams()) =>

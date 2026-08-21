@@ -12,6 +12,7 @@ export type JobFamily =
   | "devops_cloud"
   | "qa_automation"
   | "other";
+export type ApplicationStatus = "not_applied" | "applied" | "interview" | "offer" | "rejected" | "withdrawn";
 
 export interface PageResult<T> {
   items: T[];
@@ -111,6 +112,21 @@ export interface CandidateInput {
   relocation_preference: string;
   remote_preference: string;
   excluded_locations: string[];
+}
+
+export interface CandidateJobStateInput {
+  saved: boolean;
+  application_status: ApplicationStatus;
+  note?: string | null;
+}
+
+export interface CandidateJobState extends CandidateJobStateInput {
+  id: number;
+  candidate_id: number;
+  job_id: number;
+  created_at: string;
+  updated_at: string;
+  job: Job;
 }
 
 export interface RecommendationScores {
