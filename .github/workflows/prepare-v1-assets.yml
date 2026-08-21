@@ -1,6 +1,7 @@
 name: Prepare V1 assets
 
 on:
+  workflow_dispatch:
   push:
     branches: [phase4-release-hardening]
     paths:
@@ -54,8 +55,8 @@ jobs:
           cp apps/web/artifacts/ui/landing-en.png docs/assets/landing-en.png
           cp apps/web/artifacts/ui/landing-fa.png docs/assets/landing-fa.png
           cp apps/web/artifacts/ui/dashboard-en.png docs/assets/dashboard-en.png
-          cp apps/web/artifacts/ui/landing-mobile-en.png docs/assets/landing-mobile-en.png
-          cp apps/web/artifacts/ui/dashboard-mobile-en.png docs/assets/dashboard-mobile-en.png
+          cp apps/web/artifacts/ui/landing-en-mobile.png docs/assets/landing-en-mobile.png
+          cp apps/web/artifacts/ui/dashboard-en-mobile.png docs/assets/dashboard-en-mobile.png
 
       - name: Commit V1 package and screenshots
         run: |
