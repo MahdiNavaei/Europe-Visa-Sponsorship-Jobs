@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import type { Recommendation } from "@/lib/types";
 import { JobCard } from "@/components/cards/job-card";
 
 export function RecommendationList({ recommendations, explanationHref }: { recommendations: Recommendation[]; explanationHref?: string }) {
-  return <div><div className="grid gap-4 lg:grid-cols-3">{recommendations.map((item) => <JobCard key={item.job_id} job={item.job} recommendation={item} />)}</div>{explanationHref && <Link href={explanationHref} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[var(--accent)]">See the full explanation <ArrowUpRight size={15} /></Link>}</div>;
+  const locale = useLocale();
+  const t = useTranslations("explanation");
+  return <div><div className="grid gap-4 lg:grid-cols-3">{recommendations.map((item) => <JobCard key={item.job_id} job={item.job} recommendation={item} />)}</div>{explanationHref && <Link href={explanationHref} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[var(--accent)]">{t("eyebrow")} <ArrowUpRight size={15} className={locale === "fa" ? "rotate-180" : ""} /></Link>}</div>;
 }
