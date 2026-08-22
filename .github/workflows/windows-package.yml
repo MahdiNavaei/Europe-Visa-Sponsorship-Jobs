@@ -184,8 +184,9 @@ jobs:
           $smokeDataDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed Data"
           if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }
           if (Test-Path -LiteralPath $smokeDataDir) { Remove-Item -LiteralPath $smokeDataDir -Recurse -Force }
-          & $installer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed with exit code $LASTEXITCODE" }
+          $installerArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART `"/DIR=$installDir`""
+          $installerRun = Start-Process -FilePath $installer -ArgumentList $installerArguments -WindowStyle Hidden -Wait -PassThru
+          if ($installerRun.ExitCode -ne 0) { throw "Silent installer failed with exit code $($installerRun.ExitCode)" }
           foreach ($required in @(
             "$installDir/CareerRadar.exe",
             "$installDir/runtime/node.exe",
@@ -204,11 +205,11 @@ jobs:
           $env:CAREERRADAR_DATA_DIR = $smokeDataDir
           $env:CAREERRADAR_SMOKE_SEED = "1"
           try {
-            & "$installDir/CareerRadar.exe" --smoke-test
-            if ($LASTEXITCODE -ne 0) {
+            $installedSmoke = Start-Process -FilePath "$installDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
+            if ($installedSmoke.ExitCode -ne 0) {
               Get-ChildItem -LiteralPath "$smokeDataDir/logs" -ErrorAction SilentlyContinue |
                 ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
-              throw "Installed self-contained runtime smoke test failed with exit code $LASTEXITCODE"
+              throw "Installed self-contained runtime smoke test failed with exit code $($installedSmoke.ExitCode)"
             }
 
             $portableDir = Join-Path $env:RUNNER_TEMP "Career Radar Portable"
@@ -223,11 +224,11 @@ jobs:
             if (-not (Test-Path -LiteralPath "$portableDir/CareerRadar.exe")) { throw "Portable launcher is missing." }
             if (-not (Test-Path -LiteralPath "$portableDir/runtime/node.exe")) { throw "Portable bundled Node runtime is missing." }
             $env:CAREERRADAR_DATA_DIR = $portableDataDir
-            & "$portableDir/CareerRadar.exe" --smoke-test
-            if ($LASTEXITCODE -ne 0) {
+            $portableSmoke = Start-Process -FilePath "$portableDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
+            if ($portableSmoke.ExitCode -ne 0) {
               Get-ChildItem -LiteralPath "$portableDataDir/logs" -ErrorAction SilentlyContinue |
                 ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
-              throw "Portable self-contained runtime smoke test failed with exit code $LASTEXITCODE"
+              throw "Portable self-contained runtime smoke test failed with exit code $($portableSmoke.ExitCode)"
             }
           } finally {
             $env:PATH = $savedPath
