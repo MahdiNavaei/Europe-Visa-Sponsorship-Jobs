@@ -190,11 +190,6 @@ jobs:
           foreach ($required in @(
             "$installDir/CareerRadar.exe",
             "$installDir/runtime/node.exe",
-            "$installDir/alembic.ini",
-            "$installDir/migrations",
-            "$installDir/config/ranking.yaml",
-            "$installDir/config/sources.json",
-            "$installDir/data/skills.yaml",
             "$installDir/web-standalone"
           )) {
             if (-not (Test-Path -LiteralPath $required)) { throw "Installed runtime resource is missing: $required" }

@@ -293,6 +293,16 @@ def smoke_test(data_dir: Path) -> int:
     services = RuntimeServices(data_dir)
     try:
         migrate_database()
+        required_resources = (
+            bundle_dir() / "alembic.ini",
+            bundle_dir() / "migrations",
+            bundle_dir() / "config" / "ranking.yaml",
+            bundle_dir() / "config" / "sources.json",
+            bundle_dir() / "data" / "skills.yaml",
+        )
+        missing_resources = [str(path) for path in required_resources if not path.exists()]
+        if missing_resources:
+            raise RuntimeError("Embedded runtime resources are missing: " + ", ".join(missing_resources))
         if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1":
             seed_smoke_data()
         services.start()
