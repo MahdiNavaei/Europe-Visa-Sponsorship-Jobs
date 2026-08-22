@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -45,13 +45,38 @@ app = FastAPI(
 )
 
 _settings = get_settings()
+_allowed_origins = sorted(
+    {
+        origin
+        for origin in (
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            _settings.web_origin.strip(),
+        )
+        if origin
+    }
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list({"http://localhost:3000", "http://127.0.0.1:3000", _settings.web_origin}),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type"],
+    expose_headers=["X-Total-Count"],
+    max_age=600,
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
+
 app.include_router(tracking_router)
 
 SessionDep = Annotated[Session, Depends(get_db)]

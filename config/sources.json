@@ -1,0 +1,65 @@
+[
+  {
+    "provider": "greenhouse",
+    "company_name": "N26",
+    "slug": "n26",
+    "careers_url": "https://n26.com/en/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "HelloFresh",
+    "slug": "hellofresh",
+    "careers_url": "https://careers.hellofresh.com/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Atolls",
+    "slug": "atolls",
+    "careers_url": "https://www.atolls.com/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Canonical",
+    "slug": "canonical",
+    "careers_url": "https://canonical.com/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "GetYourGuide",
+    "slug": "getyourguide",
+    "careers_url": "https://www.getyourguide.careers/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "trivago",
+    "slug": "trivago",
+    "default_country": "Germany",
+    "careers_url": "https://careers.trivago.com/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Kalepa",
+    "slug": "kalepa",
+    "careers_url": "https://www.kalepa.com/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Coinbase",
+    "slug": "coinbase",
+    "careers_url": "https://www.coinbase.com/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "PRISMA European Capacity Platform",
+    "slug": "prisma6",
+    "default_country": "Germany",
+    "careers_url": "https://www.prisma-capacity.eu/careers"
+  },
+  {
+    "provider": "ashby",
+    "company_name": "Clera",
+    "slug": "Clera",
+    "default_country": "Germany",
+    "careers_url": "https://jobs.ashbyhq.com/Clera"
+  }
+]

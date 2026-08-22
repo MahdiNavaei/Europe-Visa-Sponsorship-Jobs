@@ -1,0 +1,282 @@
+name: Windows desktop package
+
+on:
+  pull_request:
+    paths:
+      - "packaging/windows/**"
+      - "src/**"
+      - "migrations/**"
+      - "config/**"
+      - "data/**"
+      - "apps/web/**"
+      - "pyproject.toml"
+      - "alembic.ini"
+      - ".github/workflows/windows-package.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install backend packaging dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
+
+      - name: Install and build web production bundle
+        shell: pwsh
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:43127
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build self-contained launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/windows/app | Out-Null
+          New-Item -ItemType Directory -Force build/windows/app/runtime | Out-Null
+          New-Item -ItemType Directory -Force build/windows/app/web-standalone | Out-Null
+
+          pyinstaller packaging/windows/launcher.py `
+            --name CareerRadar `
+            --onefile `
+            --windowed `
+            --clean `
+            --noconfirm `
+            --paths src `
+            --collect-all alembic `
+            --collect-submodules uvicorn `
+            --collect-submodules europe_visa_jobs `
+            --hidden-import h11 `
+            --hidden-import uvicorn.loops.asyncio `
+            --hidden-import uvicorn.protocols.http.h11_impl `
+            --add-data "alembic.ini;." `
+            --add-data "migrations;migrations" `
+            --add-data "config/ranking.yaml;config" `
+            --add-data "config/sources.json;config" `
+            --add-data "data/skills.yaml;data"
+
+          Copy-Item dist/CareerRadar.exe build/windows/app/CareerRadar.exe
+
+          $node = (Get-Command node).Source
+          Copy-Item $node build/windows/app/runtime/node.exe
+
+          Copy-Item apps/web/.next/standalone/* build/windows/app/web-standalone -Recurse -Force
+          $server = Get-ChildItem build/windows/app/web-standalone -Filter server.js -Recurse |
+            Where-Object { $_.FullName -match '[\\/]apps[\\/]web[\\/]server\.js$' } |
+            Select-Object -First 1
+          if (-not $server) {
+            $server = Get-ChildItem build/windows/app/web-standalone -Filter server.js -Recurse | Select-Object -First 1
+          }
+          if (-not $server) { throw "Next standalone server.js was not produced." }
+
+          $webApp = $server.Directory.FullName
+          New-Item -ItemType Directory -Force "$webApp/.next/static" | Out-Null
+          Copy-Item apps/web/.next/static/* "$webApp/.next/static" -Recurse -Force
+          if (Test-Path apps/web/public) {
+            New-Item -ItemType Directory -Force "$webApp/public" | Out-Null
+            Copy-Item apps/web/public/* "$webApp/public" -Recurse -Force
+          }
+
+          Copy-Item LICENSE build/windows/app/LICENSE.txt
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer and portable archive
+        id: package
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/web/package.json | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Force build/windows/installer | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=$version" `
+            "/DSourceDir=$((Resolve-Path build/windows/app).Path)" `
+            "/DOutputDir=$((Resolve-Path build/windows/installer).Path)" `
+            packaging/windows/installer.iss
+
+          $portable = (Join-Path (Resolve-Path build/windows/installer).Path "CareerRadar-Portable-v$version.zip")
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          Push-Location build/windows/app
+          try {
+            & $sevenZip a -tzip $portable ".\*" -mx=7
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip portable archive creation failed with exit code $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
+
+          $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          if (-not (Test-Path $installer)) { throw "Installer was not created." }
+          if (-not (Test-Path $portable)) { throw "Portable archive was not created." }
+          $hashes = @(
+            "{0}  {1}" -f (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower(), (Split-Path $installer -Leaf)
+            "{0}  {1}" -f (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower(), (Split-Path $portable -Leaf)
+          )
+          $hashes | Set-Content build/windows/installer/SHA256SUMS.txt -Encoding ascii
+          foreach ($artifact in @($installer, $portable)) {
+            $name = Split-Path $artifact -Leaf
+            $line = Get-Content build/windows/installer/SHA256SUMS.txt |
+              Where-Object { $_ -match "\s$name$" } |
+              Select-Object -First 1
+            if (-not $line) { throw "Checksum entry is missing for $name." }
+            $expected = ($line -split "\s+")[0]
+            $actual = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLower()
+            if ($expected -ne $actual) { throw "Checksum mismatch for $name." }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows packages before runtime smoke test
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-radar-windows-v${{ steps.package.outputs.version }}
+          path: |
+            build/windows/installer/CareerRadar-Setup-v${{ steps.package.outputs.version }}.exe
+            build/windows/installer/CareerRadar-Portable-v${{ steps.package.outputs.version }}.zip
+            build/windows/installer/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Validate package contents
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package.outputs.version }}"
+          $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          $portable = "build/windows/installer/CareerRadar-Portable-v$version.zip"
+          foreach ($path in @($installer, $portable, "build/windows/installer/SHA256SUMS.txt")) {
+            if (-not (Test-Path $path)) { throw "Required release file is missing: $path" }
+          }
+
+      - name: Silent-install smoke test without Python or Node on PATH
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package.outputs.version }}"
+          $installer = (Resolve-Path "build/windows/installer/CareerRadar-Setup-v$version.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed"
+          $smokeDataDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed Data"
+          if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }
+          if (Test-Path -LiteralPath $smokeDataDir) { Remove-Item -LiteralPath $smokeDataDir -Recurse -Force }
+          $installerArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART `"/DIR=$installDir`""
+          $installerRun = Start-Process -FilePath $installer -ArgumentList $installerArguments -WindowStyle Hidden -Wait -PassThru
+          if ($installerRun.ExitCode -ne 0) { throw "Silent installer failed with exit code $($installerRun.ExitCode)" }
+          foreach ($required in @(
+            "$installDir/CareerRadar.exe",
+            "$installDir/runtime/node.exe",
+            "$installDir/web-standalone"
+          )) {
+            if (-not (Test-Path -LiteralPath $required)) { throw "Installed runtime resource is missing: $required" }
+          }
+
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          $savedPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:CAREERRADAR_DATA_DIR = $smokeDataDir
+          $env:CAREERRADAR_SMOKE_SEED = "1"
+          try {
+            $installedSmoke = Start-Process -FilePath "$installDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
+            if ($installedSmoke.ExitCode -ne 0) {
+              Get-ChildItem -LiteralPath "$smokeDataDir/logs" -ErrorAction SilentlyContinue |
+                ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+              throw "Installed self-contained runtime smoke test failed with exit code $($installedSmoke.ExitCode)"
+            }
+
+            $portableDir = Join-Path $env:RUNNER_TEMP "Career Radar Portable"
+            $portableDataDir = Join-Path $env:RUNNER_TEMP "Career Radar Portable Data"
+            if (Test-Path -LiteralPath $portableDir) { Remove-Item -LiteralPath $portableDir -Recurse -Force }
+            if (Test-Path -LiteralPath $portableDataDir) { Remove-Item -LiteralPath $portableDataDir -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+            $portable = (Resolve-Path "build/windows/installer/CareerRadar-Portable-v$version.zip").Path
+            & $sevenZip x $portable "-o$portableDir" -y
+            if ($LASTEXITCODE -ne 0) { throw "Portable archive extraction failed with exit code $LASTEXITCODE" }
+            if (-not (Test-Path -LiteralPath "$portableDir/CareerRadar.exe")) { throw "Portable launcher is missing." }
+            if (-not (Test-Path -LiteralPath "$portableDir/runtime/node.exe")) { throw "Portable bundled Node runtime is missing." }
+            $env:CAREERRADAR_DATA_DIR = $portableDataDir
+            $portableSmoke = Start-Process -FilePath "$portableDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
+            if ($portableSmoke.ExitCode -ne 0) {
+              Get-ChildItem -LiteralPath "$portableDataDir/logs" -ErrorAction SilentlyContinue |
+                ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+              throw "Portable self-contained runtime smoke test failed with exit code $($portableSmoke.ExitCode)"
+            }
+          } finally {
+            $env:PATH = $savedPath
+            Remove-Item Env:CAREERRADAR_DATA_DIR -ErrorAction SilentlyContinue
+            Remove-Item Env:CAREERRADAR_SMOKE_SEED -ErrorAction SilentlyContinue
+          }
+
+  publish-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download Windows packages
+        uses: actions/download-artifact@v5
+        with:
+          pattern: career-radar-windows-v*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./apps/web/package.json').version")
+          TAG="v${VERSION}"
+          cat > release-notes.md <<EOF
+          ## Career Radar ${TAG}
+
+          Evidence-based European visa-sponsorship job intelligence for non-EU candidates.
+
+          ### Windows — easiest way to run
+          Download **CareerRadar-Setup-v${VERSION}.exe**, install it, and launch Career Radar from the Start menu. Python, Node.js, Docker, PostgreSQL, and project dependencies are bundled; users do not need to install them separately.
+
+          The desktop runtime stores its local SQLite database under `%LOCALAPPDATA%\\CareerRadar`, refreshes live ATS feeds on first launch, and refreshes again when data is older than 24 hours while the launcher is running.
+
+          Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy every calendar day.
+
+          A portable ZIP and SHA-256 checksum file are included as well.
+
+          Advanced developers can use the repository's Docker/PostgreSQL/source installation documented in README.md.
+
+          > The Windows package is currently unsigned. Windows SmartScreen may show an unknown-publisher warning until a code-signing certificate is configured.
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* --target "$GITHUB_SHA" --title "Career Radar ${TAG}" --notes-file release-notes.md
+          fi

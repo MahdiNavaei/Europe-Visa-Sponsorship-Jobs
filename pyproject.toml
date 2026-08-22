@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "europe-visa-sponsorship-jobs"
-version = "0.2.0"
+version = "1.0.0"
 description = "Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship."
 readme = "README.md"
 requires-python = ">=3.11"

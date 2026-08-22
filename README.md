@@ -1,282 +1,248 @@
-# Europe Visa Sponsorship Jobs
+# Europe Visa Sponsorship Jobs — Career Radar
 
-> Find European tech jobs where visa sponsorship and relocation are realistically possible for non-EU candidates.
+> Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship or relocation support.
 
-**Europe Visa Sponsorship Jobs** is an open-source, evidence-based job intelligence engine for software engineers, data professionals, AI/ML engineers, and other technical candidates who need employer-supported immigration to Europe.
+**v1.0.0** turns public company ATS feeds into a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
 
-The project is intentionally **not another giant job aggregator**. Its default API only returns vacancies that pass a strict, explainable sponsorship gate. Jobs with missing or ambiguous evidence are marked `unknown` and hidden from the default results.
+It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, inspectable, reproducible, and backed by stored evidence.
 
-## Why this exists
+![Career Radar dashboard](docs/assets/dashboard-en.png)
 
-International candidates waste enormous amounts of time on vacancies that look global but later reveal restrictions such as:
+## Windows — one-click install
+
+For most Windows users, no developer setup is needed.
+
+1. Open **GitHub Releases**.
+2. Download `CareerRadar-Setup-v1.0.0.exe`.
+3. Install and launch **Career Radar**.
+
+The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
+
+On first launch it creates a local SQLite database, fetches live ATS jobs, starts the API and web app on loopback-only ports, and opens the browser automatically. A portable ZIP and SHA-256 checksums are published with the installer as well.
+
+See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
+
+## Why this project exists
+
+International candidates routinely lose time on vacancies that look global but later contain restrictions such as:
 
 - `must already have the right to work`
 - `no visa sponsorship`
 - `EU/EEA candidates only`
 - `must currently reside in the EU`
 
-This project treats those sentences as first-class data, not footnotes.
+Career Radar treats those sentences as first-class eligibility data rather than footnotes.
 
-## Phase 1 status
+A company appearing in a sponsor register is **not** enough to approve every vacancy. Job-level evidence still matters, and hard negative restrictions always win.
 
-**Phase 1 — Core Platform & Data Intelligence Engine: complete.**
+## What v1.0 includes
 
-Implemented:
-
-- Normalized job schema
-- PostgreSQL/SQLite persistence
-- Alembic migration
-- Public ATS connectors for:
-  - Greenhouse
-  - Lever (global and EU instances)
-  - Ashby
-  - Workable
-  - Personio
-- Deterministic tech-role classifier
-- Strict visa/relocation signal detector
-- Hard restriction detector
-- Country-rule registry for:
-  - Netherlands
-  - Germany
-  - United Kingdom
-  - Ireland
-  - Sweden
-  - Finland
-  - Denmark
+- Public ATS connectors: Greenhouse, Lever, Ashby, Workable, Personio
+- Explicit, audited production source catalog in `config/sources.json`
+- Daily source refresh workflow
+- Technical-role classification
+- Country inference and normalized job identity
+- Visa, relocation, international-candidate, and hard-restriction detection
+- Country-specific immigration rule registry
 - Verified sponsor-registry evidence store
-- Explainable eligibility score
-- Ingestion run tracking
-- Stale-job deactivation
-- REST API with FastAPI
-- Docker/PostgreSQL environment
-- CI tests and coverage gate
-- Optional scheduled ingestion workflow
-
-## No LLM. No paid AI API.
-
-Phase 1 has **zero LLM dependency** and requires **no OpenAI, Anthropic, Gemini, or other paid AI API**.
-
-Decisions are made with:
-
-- public ATS data
-- verified sponsor evidence
-- deterministic rules
-- transparent regex/context signals
-- country-specific immigration route metadata
-
-The output is inspectable and reproducible.
+- Strict `eligible / rejected / unknown` eligibility states
+- Candidate profiles and deterministic skill ontology
+- Explainable candidate/job matching and ranking
+- Company visa-friendliness intelligence
+- Saved jobs and application-stage tracking
+- FastAPI + PostgreSQL backend
+- Bilingual Next.js application (`/en`, `/fa`) with true RTL Persian
+- Light/dark themes and responsive desktop/mobile UI
+- Docker production stack
+- Dependency-free Windows installer + portable package
+- PostgreSQL migration round-trip validation
+- Chromium, Firefox, and WebKit E2E coverage
+- Accessibility, security, dependency, and public-repository audits
+- Lighthouse performance budgets
+- Live public-ATS-to-browser E2E validation
 
 ## Strict eligibility policy
 
-A vacancy can have one of three internal states:
+| Status | Meaning | Default UI/API |
+|---|---|---:|
+| `eligible` | Strong sponsorship/relocation evidence and no hard restriction | Shown |
+| `rejected` | A hard restriction was found | Hidden |
+| `unknown` | Evidence is incomplete or ambiguous | Hidden |
 
-| Status | Meaning | Shown by default? |
-|---|---|---|
-| `eligible` | Strong evidence supports sponsorship and no hard restriction was found | Yes |
-| `rejected` | A hard restriction was found | No |
-| `unknown` | Evidence is incomplete or ambiguous | No |
+The system intentionally prefers false negatives over false positives. If it cannot prove enough, the job stays `unknown` instead of wasting a candidate's time.
 
-Countries with a formal sponsor register (currently the Netherlands and UK in Phase 1) require verified company-registry evidence in strict mode.
+## Verified live-data path
 
-A sponsor licence alone is never treated as proof that every vacancy is sponsored. The job itself must also contain strong sponsorship/relocation/international-candidate evidence.
+Phase 4 contains a networked E2E gate with **no mocked job data path**:
+
+```text
+Public ATS
+   ↓
+Connector + normalization
+   ↓
+Eligibility engine
+   ↓
+PostgreSQL
+   ↓
+FastAPI
+   ↓
+Production Next.js
+   ↓
+Real browser → Job detail → Apply URL
+```
+
+Release validation on **2026-08-21 UTC** verified all 10 configured production feeds live and fetched **1,373 raw current positions** across them.
+
+A smaller independent Greenhouse + Ashby smoke set was then ingested twice into fresh PostgreSQL:
+
+- 96 active technical jobs
+- 79 postings inside the 60-day freshness window
+- 40 strict-mode eligible jobs
+- identical source/external-id key set after immediate re-ingestion
+- real FastAPI response verified
+- real production Next.js UI verified in Chromium
+- job detail and outbound application link verified
+
+The smoke run included current postings from N26 and Clera dated August 19–21, 2026.
+
+Live upstream services can change, so CI also validates the configured source catalog rather than assuming ATS slugs remain valid forever.
+
+## Daily refresh: what it guarantees
+
+`.github/workflows/daily-ingest.yml` is scheduled for **03:17 UTC every day** and can also be dispatched manually.
+
+It:
+
+1. migrates the persistent database,
+2. reads the audited `config/sources.json` catalog,
+3. re-fetches current ATS vacancies,
+4. upserts jobs deterministically,
+5. deactivates jobs that disappeared from a successfully refreshed source,
+6. re-runs eligibility analysis,
+7. reports active, eligible, and newest-posting statistics.
+
+A deployed instance must provide a persistent PostgreSQL connection through the repository secret `DATABASE_URL`. The workflow fails loudly if that configuration is missing.
+
+**Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
+
+The Windows desktop runtime has its own local refresh cycle: first launch fetches live jobs, later launches refresh data when it is older than 24 hours, and users can trigger a refresh manually from the launcher.
+
+Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
+
+## Current production source catalog
+
+The tracked v1 catalog currently includes live-verified public feeds for:
+
+- N26
+- HelloFresh
+- Atolls
+- Canonical
+- GetYourGuide
+- trivago
+- Kalepa
+- Coinbase
+- PRISMA European Capacity Platform
+- Clera
+
+The catalog is deliberately explicit and auditable rather than an unrestricted crawler. Coverage can grow safely by adding verified ATS sources.
 
 ## Architecture
 
 ```text
-Public company ATS feeds
-        │
-        ├── Greenhouse
-        ├── Lever
-        ├── Ashby
-        ├── Workable
-        └── Personio
-        │
-        ▼
-Job normalization
-        │
-        ├── country inference
-        ├── tech-role classification
-        └── canonical source identity
-        │
-        ▼
-Eligibility engine
-        │
-        ├── hard negative restrictions
-        ├── explicit visa/work-permit signals
-        ├── relocation signals
-        ├── international-candidate signals
-        ├── verified sponsor registry
-        └── country rules
-        │
-        ▼
-PostgreSQL
-        │
-        ├── jobs
-        ├── companies
-        ├── sponsor records
-        ├── evidence
-        └── ingestion runs
-        │
-        ▼
+ATS connectors
+   │
+   ├─ Greenhouse
+   ├─ Lever
+   ├─ Ashby
+   ├─ Workable
+   └─ Personio
+   ↓
+Normalization + role classification
+   ↓
+Visa / relocation / restriction evidence
+   ↓
+Country rules + sponsor evidence
+   ↓
+Strict eligibility engine
+   ↓
+PostgreSQL / local Windows SQLite
+   ├─ jobs + evidence
+   ├─ companies + sponsor records
+   ├─ candidates
+   ├─ application states
+   └─ ingestion runs
+   ↓
+Candidate matching + ranking
+   ↓
 FastAPI
+   ↓
+Next.js Career Radar (EN / FA RTL)
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PHASE_2.md`](docs/PHASE_2.md), [`docs/PHASE_3.md`](docs/PHASE_3.md), and [`docs/PHASE_4.md`](docs/PHASE_4.md).
 
-## Quick start
+## Developer quick start
 
-### Local SQLite
+### Backend with SQLite
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 alembic upgrade head
 uvicorn europe_visa_jobs.api.app:app --reload
 ```
 
-Open:
+API: `http://localhost:8000`  
+Swagger: `http://localhost:8000/docs`  
+Health: `http://localhost:8000/health`
 
-- API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
-
-### Docker + PostgreSQL
+### Web application
 
 ```bash
-docker compose up --build
+cd apps/web
+npm ci
+npm run dev
 ```
 
-API: `http://localhost:8000`
+English: `http://localhost:3000/en`  
+Persian RTL: `http://localhost:3000/fa`
 
-### Run the fictional demo dataset
+The web app defaults to `http://localhost:8000` for the API. Set `NEXT_PUBLIC_API_URL` when using another origin and configure `WEB_ORIGIN` on the backend.
 
-The demo records are deterministic and clearly marked as sample data. They do not assert that
-any named company sponsors visas or that any vacancy is real.
+### Production-like Docker stack
+
+A production-style stack with PostgreSQL, FastAPI, and standalone Next.js is provided:
 
 ```bash
-python scripts/seed_demo.py
+export POSTGRES_PASSWORD='choose-a-strong-password'
+docker compose -f docker-compose.production.yml up -d --build
 ```
 
-To use a separate local database:
+The production compose file intentionally has no default database password.
 
-```bash
-python scripts/seed_demo.py --database-url sqlite:///./demo.db
-```
+## Run real job ingestion
 
-## Configure job sources
-
-Copy the example:
-
-```bash
-cp config/sources.example.json config/sources.json
-```
-
-Example source:
-
-```json
-{
-  "provider": "lever",
-  "company_name": "Example EU Company",
-  "slug": "example",
-  "default_country": "Germany",
-  "region": "eu"
-}
-```
-
-Run ingestion:
+`config/sources.json` already contains the live-verified v1 source catalog.
 
 ```bash
 evj-ingest jobs --sources config/sources.json
 ```
 
-Only supported technical job families are stored during Phase 1.
+To maintain a custom deployment, edit that catalog or start from `config/sources.example.json` and validate the ATS slugs before relying on them.
 
-## Import verified sponsor evidence
+## Demo data
 
-Sponsor records are deliberately separate from jobs. Import a normalized CSV:
-
-```csv
-company_name,country,registry_name,source_url
-Example Company,Netherlands,IND Public Register Recognised Sponsors - Labour,https://ind.nl/...
-```
-
-Then:
+For UI development without external network traffic:
 
 ```bash
-evj-ingest sponsors --file data/sponsors.csv
+python scripts/seed_demo.py
 ```
 
-See [`data/sponsors.example.csv`](data/sponsors.example.csv).
+The demo dataset is deterministic and fictional; it never claims that a real employer sponsors a fictional vacancy.
 
-## API
-
-### Eligible jobs
-
-```http
-GET /api/v1/jobs
-```
-
-Default behavior: `status=eligible`.
-
-Filters:
-
-```http
-GET /api/v1/jobs?country=Germany
-GET /api/v1/jobs?country=Netherlands&job_family=ai_ml
-GET /api/v1/jobs?status=unknown
-GET /api/v1/jobs?category=ai_ml&visa_status=eligible&limit=20&offset=20
-```
-
-### Job evidence
-
-```http
-GET /api/v1/jobs/{id}
-```
-
-Returns the evidence used to make the decision.
-
-### Companies
-
-```http
-GET /api/v1/companies
-```
-
-### Countries
-
-```http
-GET /api/v1/countries
-```
-
-### Stats
-
-```http
-GET /api/v1/stats
-```
-
-## Phase 3 web application
-
-The professional bilingual Career Radar frontend lives in [`apps/web`](apps/web). It consumes the Phase 2 API for jobs, evidence, candidate profiles, recommendations, and explanations without duplicating backend intelligence.
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000/en`. Persian RTL is available at `/fa`; theme preference is persisted locally. Start the API at `http://localhost:8000` first for live data, or set `NEXT_PUBLIC_API_URL` for another API origin. The backend accepts the browser origin through `WEB_ORIGIN`.
-
-Frontend verification:
-
-```bash
-npm run lint
-npm run test
-npm run build
-npx playwright test
-```
-
-### Candidate recommendations
+## Candidate intelligence API
 
 ```http
 POST /api/v1/candidates
@@ -285,84 +251,70 @@ GET  /api/v1/recommendations/{candidate_id}
 GET  /api/v1/recommendations/{candidate_id}/explain
 ```
 
-Recommendation queries support `country`, `role`, `min_score`, `limit`, `offset`, and
-`include_unknown`. Responses remain JSON lists for backward compatibility and include an
-`X-Total-Count` header. Each item includes a frontend-friendly `scores` object alongside the
-legacy flat score fields:
+Recommendations combine visa compatibility, skill coverage, experience/seniority, country preference, role similarity, and company evidence. Ranking weights live in [`config/ranking.yaml`](config/ranking.yaml), while skill aliases/categories live in [`data/skills.yaml`](data/skills.yaml).
 
-```json
-{
-  "job": {"id": 42, "title": "Senior AI Engineer"},
-  "scores": {"overall": 92, "visa": 100, "skill": 90, "experience": 88, "country": 100, "company": 75},
-  "reasons": ["The job passed the strict sponsorship eligibility gate."],
-  "warnings": ["Missing required skills: Kubernetes."]
-}
+## Job API
+
+Default behavior returns eligible jobs only:
+
+```http
+GET /api/v1/jobs
+GET /api/v1/jobs/{id}
+GET /api/v1/jobs?country=Germany&category=ai_ml&limit=20&offset=0
 ```
 
-## Tests
+Pagination exposes `X-Total-Count`. Job detail returns the evidence used by the eligibility engine.
+
+## Verification
+
+Backend:
 
 ```bash
 pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
-mypy src --ignore-missing-imports
+ruff check src tests scripts
+mypy src scripts --ignore-missing-imports
 ```
 
-CI also runs compilation, Ruff, mypy, migrations, coverage, and the Docker image build on pull requests.
+Frontend:
 
-## Phase 2 status
+```bash
+cd apps/web
+npm ci
+npm run lint
+npm test
+npm run build
+npx playwright test
+```
 
-**Phase 2 — Candidate Intelligence & Matching Engine: implemented.**
+Release CI additionally validates:
 
-Implemented:
+- Python 3.11 and 3.12
+- SQLite and PostgreSQL Alembic round trips
+- backend and frontend production builds
+- Chromium / Firefox / WebKit critical flows
+- live public ATS source health
+- live ATS → PostgreSQL → API → production browser E2E
+- Windows self-contained installer build and silent-install smoke test
+- `pip-audit` and `npm audit --audit-level=high`
+- secret/local-artifact/public-repository safety
+- accessibility and responsive behavior
+- Lighthouse budgets for English and Persian
+- fresh-checkout production Docker acceptance
 
-- Candidate profile persistence and validation
-- Target roles, canonical skills, experience, seniority, country, visa, relocation, remote, and exclusion preferences
-- Deterministic skill ontology with aliases, categories, and explainable extraction
-- Required/preferred job skill analysis and experience/seniority extraction
-- Candidate-specific visa, skill, role, experience, country, and company matching
-- Configurable 35/30/15/10/10 recommendation ranking
-- File-backed ranking weights in [`config/ranking.yaml`](config/ranking.yaml)
-- File-backed skill aliases/categories in [`data/skills.yaml`](data/skills.yaml)
-- Company friendliness scoring from Phase 1 sponsor and vacancy evidence
-- Explainable recommendation and detailed explanation endpoints
-- Fixture-backed ranking regression tests for Phase 2
-- Deterministic fictional demo seed script for local UI development
+## Project status
 
-See [`docs/PHASE_2.md`](docs/PHASE_2.md) for the matching architecture, scoring formula, and API examples.
-
-See [`docs/PHASE_3.md`](docs/PHASE_3.md) for the UI architecture, design system, internationalization, and frontend verification flow.
-
-## Current job families
-
-- Software Engineering
-- Backend
-- Frontend
-- Full Stack
-- Mobile
-- AI / Machine Learning
-- Data Science
-- Data Engineering
-- MLOps
-- DevOps / Cloud / SRE / Platform
-- QA Automation
-
-## Accuracy philosophy
-
-The project prefers **false negatives over false positives**.
-
-If we cannot prove enough, the job becomes `unknown` instead of being shown as sponsorship-ready. A user should not lose an hour because the system guessed.
-
-This project is not legal or immigration advice. Visa rules and employer policies change; evidence is stored so decisions can be audited and refreshed.
-
-## Roadmap
-
-The project is delivered in four phases:
+All four v1 phases are implemented:
 
 1. **Core Platform & Data Intelligence Engine** ✅
-2. **Candidate Matching & Intelligence**
-3. **Professional UI/UX**
-4. **Full Testing, Integration & E2E Hardening**
+2. **Candidate Matching & Intelligence** ✅
+3. **Professional bilingual UI/UX** ✅
+4. **Full Testing, Integration & E2E Hardening** ✅
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Accuracy and legal boundary
+
+Visa and sponsorship results are deterministic evidence signals, **not legal or immigration advice and not a sponsorship guarantee**. Employer policy and immigration rules can change after data is collected. Evidence is retained so decisions can be audited and refreshed.
 
 ## License
 
@@ -370,4 +322,4 @@ MIT
 
 ---
 
-Keywords: Europe visa sponsorship jobs, EU visa sponsorship jobs, relocation jobs Europe, non-EU developer jobs, European tech jobs with visa sponsorship, Blue Card jobs, Highly Skilled Migrant jobs, Skilled Worker sponsorship jobs.
+Keywords: Europe visa sponsorship jobs, EU visa sponsorship jobs, relocation jobs Europe, non-EU developer jobs, AI jobs Europe, data jobs Europe, Blue Card jobs, Highly Skilled Migrant jobs, Skilled Worker sponsorship jobs.

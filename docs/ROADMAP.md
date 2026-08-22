@@ -1,6 +1,11 @@
 # Roadmap
 
-The project is intentionally divided into four delivery phases.
+The v1 project was intentionally delivered in four phases. All four phases are complete; future work can extend source coverage and product capabilities without weakening the strict evidence policy.
+
+The remaining release-closure work is operational rather than a new product
+phase: the final Windows artifacts, hosted validation evidence, PR merge, main
+branch validation, v1.0.0 publication, and post-publication asset verification
+must all be completed before the release is called finished.
 
 ## Phase 1 — Core Data & Visa Intelligence ✅
 
@@ -60,15 +65,29 @@ The project is intentionally divided into four delivery phases.
 - [x] Vitest/React Testing Library coverage
 - [x] Playwright critical user journeys
 
-## Phase 4 — Release Hardening & Real E2E
+## Phase 4 — Release Hardening & Real E2E ✅
 
-- [ ] Fresh-clone production-like acceptance test
-- [ ] Browser matrix and responsive visual regression
-- [ ] Accessibility audit
-- [ ] Performance/Lighthouse budgets
-- [ ] Security/dependency audit
-- [ ] Database upgrade/backward-compatibility scenarios
-- [ ] Failure/retry and degraded-source tests
-- [ ] Production deployment configuration
-- [ ] README screenshots/demo assets
-- [ ] Release checklist and public-repository audit
+- [x] Fresh-clone production-like acceptance test
+- [x] Chromium, Firefox and WebKit browser matrix
+- [x] Responsive visual regression snapshots
+- [x] Accessibility and keyboard audit
+- [x] Performance/Lighthouse budgets
+- [x] Python/frontend dependency security audits
+- [x] Public-repository secret/artifact audit
+- [x] PostgreSQL migration upgrade/downgrade/re-upgrade scenarios
+- [x] Failure/retry and degraded-source tests
+- [x] Production Docker Compose configuration
+- [x] Secure CORS and baseline browser/API security headers
+- [x] Real production ATS source catalog
+- [x] Live health validation for every configured v1 ATS feed
+- [x] Live ATS → PostgreSQL → eligibility → FastAPI E2E
+- [x] Real production-browser validation of ingested jobs and application links
+- [x] Immediate second-ingestion idempotency validation
+- [x] Freshness validation for live postings
+- [x] Daily persistent ingestion workflow with explicit configuration failure
+- [x] README release screenshot and v1 documentation
+- [x] Release checklist and public-repository audit
+
+## After v1
+
+The strongest next improvements are broader verified source coverage, additional European sponsor registries, richer country-rule maintenance, and deployment/operations for a public hosted instance. New sources should be added only when their public ATS endpoint can be health-checked and their normalized output passes the same live-data validation used by v1.

@@ -16,7 +16,7 @@
   --rose: #c94e69;
   --rose-soft: #ffebef;
   --shadow-card: 0 18px 50px rgba(26, 33, 55, 0.06);
-  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .dark {
@@ -47,11 +47,27 @@ body {
   font-feature-settings: "cv11" 1, "ss01" 1;
   text-rendering: optimizeLegibility;
 }
-body.font-fa { --font-ui: "Vazirmatn", Tahoma, Arial, sans-serif; }
-body.font-en { --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body.font-fa { --font-ui: var(--font-vazirmatn), Tahoma, Arial, sans-serif; }
+body.font-en { --font-ui: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
 ::selection { background: var(--accent-soft); color: var(--accent-strong); }
+
+.skip-link {
+  position: fixed;
+  inset-inline-start: 1rem;
+  top: .75rem;
+  z-index: 100;
+  transform: translateY(-180%);
+  border-radius: .75rem;
+  background: var(--ink);
+  color: var(--paper);
+  padding: .65rem .9rem;
+  font-size: .875rem;
+  font-weight: 800;
+  transition: transform .15s ease;
+}
+.skip-link:focus { transform: translateY(0); }
 
 .shell-grid {
   background-image: linear-gradient(to right, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px);
@@ -64,6 +80,16 @@ html[lang="fa"] .display { letter-spacing: -0.025em; line-height: 1.12; }
 .card-shadow { box-shadow: var(--shadow-card); }
 .glass { background: color-mix(in srgb, var(--card) 76%, transparent); backdrop-filter: blur(16px); }
 .focus-ring:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
 
 @media (max-width: 640px) {
   .display { letter-spacing: -0.04em; }
