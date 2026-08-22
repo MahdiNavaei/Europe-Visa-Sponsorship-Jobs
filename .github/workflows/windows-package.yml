@@ -14,6 +14,7 @@ on:
       - ".github/workflows/windows-package.yml"
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -48,6 +49,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]" pyinstaller
+
+      - name: Assert packaging imports the checked-out source
+        shell: pwsh
+        run: |
+          $expected = (Resolve-Path "src/europe_visa_jobs").Path
+          $actual = (python -c "import europe_visa_jobs; print(europe_visa_jobs.__path__[0])").Trim()
+          if ((Resolve-Path $actual).Path -ne $expected) {
+            throw "Packaging imported $actual instead of checked-out source $expected"
+          }
+          $version = (python -c "import europe_visa_jobs; print(europe_visa_jobs.__version__)").Trim()
+          if ($version -ne "1.0.0") { throw "Unexpected packaged backend version: $version" }
 
       - name: Install and build web production bundle
         shell: pwsh
@@ -232,7 +244,7 @@ jobs:
           }
 
   publish-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build-windows
     runs-on: ubuntu-latest
     permissions:
