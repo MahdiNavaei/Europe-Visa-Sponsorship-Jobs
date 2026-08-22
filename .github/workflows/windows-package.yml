@@ -58,8 +58,11 @@ jobs:
           if ((Resolve-Path $actual).Path -ne $expected) {
             throw "Packaging imported $actual instead of checked-out source $expected"
           }
-          $version = (python -c "import europe_visa_jobs; print(europe_visa_jobs.__version__)").Trim()
-          if ($version -ne "1.0.0") { throw "Unexpected packaged backend version: $version" }
+          $backendVersion = (python -c "import europe_visa_jobs; print(europe_visa_jobs.__version__)").Trim()
+          $webVersion = (Get-Content "apps/web/package.json" | ConvertFrom-Json).version
+          if ($backendVersion -ne $webVersion) {
+            throw "Backend version $backendVersion does not match web version $webVersion"
+          }
 
       - name: Install and build web production bundle
         shell: pwsh
