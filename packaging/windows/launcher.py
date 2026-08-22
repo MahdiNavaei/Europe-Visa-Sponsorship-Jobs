@@ -14,6 +14,7 @@ import webbrowser
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -299,6 +300,8 @@ class RuntimeServices:
 
 
 def smoke_test(data_dir: Path) -> int:
+    from europe_visa_jobs import __version__
+
     services = RuntimeServices(data_dir)
     try:
         migrate_database()
@@ -317,7 +320,6 @@ def smoke_test(data_dir: Path) -> int:
         services.start()
         health = read_json(f"{API_URL}/health")
         from europe_visa_jobs import __version__
-
         if health.get("status") != "ok" or health.get("version") != __version__:
             raise RuntimeError(f"Unexpected API health response: {health!r}")
         jobs = read_json(f"{API_URL}/api/v1/jobs?limit=1")
@@ -383,9 +385,9 @@ class LauncherWindow:
         threading.Thread(target=self._start_runtime, daemon=True, name="career-radar-startup").start()
         self.root.mainloop()
 
-    def _ui(self, callback, *args) -> None:
+    def _ui(self, callback, *args, **kwargs) -> None:
         with suppress(self.tk.TclError):
-            self.root.after(0, callback, *args)
+            self.root.after(0, partial(callback, *args, **kwargs))
 
     def _set_status(self, text: str) -> None:
         self.status.set(text)
