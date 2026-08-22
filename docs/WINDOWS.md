@@ -54,9 +54,18 @@ The installer contains:
 
 The local runtime binds only to loopback (`127.0.0.1`) on dedicated high ports; it is not exposed to the LAN by default.
 
+The release workflow runs `CareerRadar.exe --smoke-test` from both a clean silent
+installation and a freshly extracted portable directory with host Python and Node
+removed from `PATH`. The test uses an isolated data directory and one clearly
+fictional fixture so it can verify migrations, the API, the production web server,
+the frontend response, and clean child-process shutdown without making a live ATS
+network call.
+
 ## Portable package
 
-Each GitHub Release also contains `CareerRadar-Portable-v1.0.0.zip`. Extract it and run `CareerRadar.exe`; it has the same dependency-free runtime as the installer.
+The v1.0.0 release contains `CareerRadar-Portable-v1.0.0.zip` alongside the
+installer when its clean smoke test passes. Extract it and run `CareerRadar.exe`;
+it has the same dependency-free runtime as the installer.
 
 ## Integrity
 

@@ -11,8 +11,11 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 APP_NAME = "Career Radar"
 API_PORT = 43127
@@ -34,8 +37,9 @@ def install_dir() -> Path:
 
 
 def app_data_dir() -> Path:
+    override = os.environ.get("CAREERRADAR_DATA_DIR")
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    path = Path(base) / "CareerRadar"
+    path = Path(override) if override else Path(base) / "CareerRadar"
     path.mkdir(parents=True, exist_ok=True)
     (path / "logs").mkdir(parents=True, exist_ok=True)
     return path
@@ -53,7 +57,7 @@ def redirect_stdio(data_dir: Path) -> None:
     if sys.stdout is not None and sys.stderr is not None:
         return
     log_path = data_dir / "logs" / "launcher.log"
-    stream = open(log_path, "a", encoding="utf-8", buffering=1)
+    stream = open(log_path, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - retained as stdio
     if sys.stdout is None:
         sys.stdout = stream
     if sys.stderr is None:
@@ -66,8 +70,13 @@ def migrate_database() -> None:
 
     config_path = bundle_dir() / "alembic.ini"
     migrations_path = bundle_dir() / "migrations"
+    if not config_path.is_file():
+        raise RuntimeError(f"Bundled Alembic configuration was not found: {config_path}")
+    if not migrations_path.is_dir():
+        raise RuntimeError(f"Bundled database migrations were not found: {migrations_path}")
     config = Config(str(config_path))
-    config.set_main_option("script_location", str(migrations_path))
+    config.set_main_option("script_location", str(migrations_path).replace("%", "%%"))
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
     command.upgrade(config, "head")
 
 
@@ -79,11 +88,31 @@ def http_ok(url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def wait_for(url: str, timeout: float = 45.0) -> None:
+def read_url(url: str, timeout: float = 5.0) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "CareerRadar-smoke-test"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        if not 200 <= response.status < 400:
+            raise RuntimeError(f"{url} returned HTTP {response.status}")
+        return response.read()
+
+
+def read_json(url: str, timeout: float = 5.0) -> Any:
+    return json.loads(read_url(url, timeout).decode("utf-8"))
+
+
+def wait_for(
+    url: str,
+    timeout: float = 45.0,
+    failure: Callable[[], str | None] | None = None,
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if http_ok(url):
             return
+        if failure is not None:
+            message = failure()
+            if message:
+                raise RuntimeError(message)
         time.sleep(0.35)
     raise RuntimeError(f"Timed out waiting for {url}")
 
@@ -121,14 +150,71 @@ def refresh_jobs(data_dir: Path) -> None:
     mark_refreshed(data_dir)
 
 
+def seed_smoke_data() -> None:
+    """Insert one clearly fictional row for the isolated packaged-runtime smoke test."""
+    from datetime import datetime
+
+    from europe_visa_jobs.db.repository import Repository
+    from europe_visa_jobs.db.session import SessionLocal
+    from europe_visa_jobs.eligibility import EligibilityEngine
+    from europe_visa_jobs.schemas import ATSProvider, JobFamily, NormalizedJob
+
+    job = NormalizedJob(
+        external_id="career-radar-packaged-smoke",
+        provider=ATSProvider.GREENHOUSE,
+        source_slug="packaged-smoke",
+        company_name="Career Radar Smoke Fixture (Sample)",
+        title="Senior Backend Engineer",
+        description=(
+            "DETERMINISTIC SMOKE FIXTURE ONLY — not a real vacancy or sponsorship claim. "
+            "Visa sponsorship and relocation support are available."
+        ),
+        location="Berlin, Germany",
+        country="Germany",
+        apply_url="https://example.invalid/career-radar-smoke",
+        job_url="https://example.invalid/career-radar-smoke",
+        posted_at=datetime.now(UTC),
+        job_family=JobFamily.BACKEND,
+    )
+    with SessionLocal() as session:
+        Repository(session).upsert_job(job, EligibilityEngine().assess(job))
+        session.commit()
+
+
 class RuntimeServices:
-    def __init__(self) -> None:
+    def __init__(self, data_dir: Path) -> None:
+        self.data_dir = data_dir
         self.api_server = None
         self.api_thread: threading.Thread | None = None
-        self.web_process: subprocess.Popen[bytes] | None = None
+        self.web_process: subprocess.Popen[str] | None = None
+        self.api_error: BaseException | None = None
+        self.web_log = None
+
+    def _run_api(self) -> None:
+        try:
+            assert self.api_server is not None
+            self.api_server.run()
+        except BaseException as exc:  # pragma: no cover - exercised by frozen runtime
+            self.api_error = exc
+
+    def _api_failure(self) -> str | None:
+        if self.api_error is not None:
+            return f"FastAPI failed to start: {self.api_error!r}"
+        if self.api_thread is not None and not self.api_thread.is_alive():
+            return "FastAPI stopped before its health endpoint became available."
+        return None
+
+    def _web_failure(self) -> str | None:
+        if self.web_process is not None and self.web_process.poll() is not None:
+            return (
+                "Next.js stopped before its health endpoint became available "
+                f"(exit code {self.web_process.returncode}); see logs/web.log."
+            )
+        return None
 
     def start(self) -> None:
         import uvicorn
+
         from europe_visa_jobs.api.app import app
 
         config = uvicorn.Config(
@@ -141,59 +227,86 @@ class RuntimeServices:
             http="h11",
         )
         self.api_server = uvicorn.Server(config)
-        self.api_thread = threading.Thread(target=self.api_server.run, daemon=True, name="career-radar-api")
-        self.api_thread.start()
-        wait_for(f"{API_URL}/health")
+        try:
+            self.api_thread = threading.Thread(target=self._run_api, daemon=True, name="career-radar-api")
+            self.api_thread.start()
+            wait_for(f"{API_URL}/health", failure=self._api_failure)
 
-        root = install_dir()
-        node = root / "runtime" / "node.exe"
-        server_candidates = list((root / "web-standalone").glob("**/server.js"))
-        if not node.is_file():
-            raise RuntimeError(f"Bundled Node runtime was not found: {node}")
-        if not server_candidates:
-            raise RuntimeError("Bundled Next.js standalone server was not found.")
-        server = next(
-            (candidate for candidate in server_candidates if candidate.parent.name == "web"),
-            server_candidates[0],
-        )
-        env = os.environ.copy()
-        env.update(
-            {
-                "NODE_ENV": "production",
-                "PORT": str(WEB_PORT),
-                "HOSTNAME": "127.0.0.1",
-            }
-        )
-        self.web_process = subprocess.Popen(
-            [str(node), str(server)],
-            cwd=str(server.parent),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=CREATE_NO_WINDOW,
-        )
-        wait_for(WEB_URL)
+            root = install_dir()
+            node = root / "runtime" / "node.exe"
+            standalone_root = root / "web-standalone"
+            server_candidates = list(standalone_root.glob("**/server.js"))
+            if not node.is_file():
+                raise RuntimeError(f"Bundled Node runtime was not found: {node}")
+            if not standalone_root.is_dir():
+                raise RuntimeError(f"Bundled Next.js resources were not found: {standalone_root}")
+            if not server_candidates:
+                raise RuntimeError("Bundled Next.js standalone server was not found.")
+            server = next(
+                (candidate for candidate in server_candidates if candidate.parent.name == "web"),
+                server_candidates[0],
+            )
+            static_dir = server.parent / ".next" / "static"
+            if not static_dir.is_dir():
+                raise RuntimeError(f"Bundled Next.js static assets were not found: {static_dir}")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "NODE_ENV": "production",
+                    "PORT": str(WEB_PORT),
+                    "HOSTNAME": "127.0.0.1",
+                }
+            )
+            self.web_log = (self.data_dir / "logs" / "web.log").open("a", encoding="utf-8", buffering=1)
+            self.web_process = subprocess.Popen(
+                [str(node), str(server)],
+                cwd=str(server.parent),
+                env=env,
+                stdout=self.web_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            wait_for(WEB_URL, failure=self._web_failure)
+        except BaseException:
+            self.stop()
+            raise
 
     def stop(self) -> None:
-        if self.api_server is not None:
-            self.api_server.should_exit = True
         if self.web_process is not None and self.web_process.poll() is None:
             self.web_process.terminate()
             try:
                 self.web_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.web_process.kill()
+                self.web_process.wait(timeout=5)
+        if self.web_log is not None:
+            self.web_log.close()
+            self.web_log = None
+        if self.api_server is not None:
+            self.api_server.should_exit = True
         if self.api_thread is not None and self.api_thread.is_alive():
             self.api_thread.join(timeout=5)
 
 
 def smoke_test(data_dir: Path) -> int:
-    services = RuntimeServices()
+    services = RuntimeServices(data_dir)
     try:
         migrate_database()
+        if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1":
+            seed_smoke_data()
         services.start()
-        wait_for(f"{API_URL}/api/v1/jobs?limit=1")
-        wait_for(WEB_URL)
+        health = read_json(f"{API_URL}/health")
+        if health.get("status") != "ok" or health.get("version") != "1.0.0":
+            raise RuntimeError(f"Unexpected API health response: {health!r}")
+        jobs = read_json(f"{API_URL}/api/v1/jobs?limit=1")
+        if not isinstance(jobs, list):
+            raise RuntimeError("The jobs endpoint did not return a JSON list.")
+        if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1" and not jobs:
+            raise RuntimeError("The deterministic smoke fixture was not returned by the jobs API.")
+        page = read_url(WEB_URL).decode("utf-8", errors="replace")
+        if "Career Radar" not in page:
+            raise RuntimeError("The production frontend did not return Career Radar markup.")
         print("Career Radar self-contained Windows runtime smoke test passed.")
         return 0
     finally:
@@ -209,7 +322,7 @@ class LauncherWindow:
         self.messagebox = messagebox
         self.data_dir = data_dir
         self.first_run = first_run
-        self.services = RuntimeServices()
+        self.services = RuntimeServices(data_dir)
         self.refreshing = False
 
         self.root = tk.Tk()
@@ -250,10 +363,8 @@ class LauncherWindow:
         self.root.mainloop()
 
     def _ui(self, callback, *args) -> None:
-        try:
+        with suppress(self.tk.TclError):
             self.root.after(0, callback, *args)
-        except self.tk.TclError:
-            pass
 
     def _set_status(self, text: str) -> None:
         self.status.set(text)

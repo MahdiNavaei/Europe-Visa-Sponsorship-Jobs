@@ -2,6 +2,11 @@
 
 The v1 project was intentionally delivered in four phases. All four phases are complete; future work can extend source coverage and product capabilities without weakening the strict evidence policy.
 
+The remaining release-closure work is operational rather than a new product
+phase: the final Windows artifacts, hosted validation evidence, PR merge, main
+branch validation, v1.0.0 publication, and post-publication asset verification
+must all be completed before the release is called finished.
+
 ## Phase 1 — Core Data & Visa Intelligence ✅
 
 - [x] Normalized job schema

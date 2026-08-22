@@ -151,7 +151,24 @@ Reports are retained as CI artifacts.
 
 All services use health checks. The frontend runs as a non-root user in its production container.
 
-### 12. Fresh-clone acceptance test
+### 12. Windows desktop release closure
+
+The Windows package workflow builds a PyInstaller launcher, bundled Node runtime,
+Next.js standalone output, Alembic migrations, and the tracked runtime
+configuration. It creates the installer, portable ZIP, and `SHA256SUMS.txt`,
+verifies both hashes, and uploads the artifacts before runtime validation so a
+failed smoke test does not hide the build from diagnosis.
+
+The installed and portable smoke tests run from their actual product directories
+with host Python and Node removed from `PATH`. They use separate fresh data
+directories, run migrations, start loopback-only FastAPI and Next.js services,
+check API health/version, make a real jobs API request, verify Career Radar
+frontend markup, and terminate child processes. The smoke fixture is explicitly
+fictional and is not live job data. Live ATS ingestion remains a separate release
+gate; Career Radar refreshes configured sources daily and surfaces newly
+discovered eligible opportunities.
+
+### 13. Fresh-clone acceptance test
 
 The final acceptance job starts from a clean GitHub checkout and:
 
@@ -164,8 +181,13 @@ The final acceptance job starts from a clean GitHub checkout and:
 
 This is the final automated release gate.
 
-## Remaining product limitation
+## Remaining product limitations
 
 Visa and sponsorship results are deterministic, evidence-based signals. They are not legal advice and are not a guarantee that an employer will sponsor a particular applicant. Employer policy and immigration rules can change after data is collected.
 
 The source catalog is intentionally explicit and auditable rather than an unrestricted web crawler. Coverage grows by adding verified public ATS sources to `config/sources.json`.
+
+The v1.0.0 Windows binary is unsigned because the project does not have a
+code-signing certificate. Windows SmartScreen may therefore identify the
+publisher as unknown. The release must not be described as signed until
+Authenticode signing is actually configured.

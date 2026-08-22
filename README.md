@@ -127,6 +127,8 @@ A deployed instance must provide a persistent PostgreSQL connection through the 
 
 The Windows desktop runtime has its own local refresh cycle: first launch fetches live jobs, later launches refresh data when it is older than 24 hours, and users can trigger a refresh manually from the launcher.
 
+Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
+
 ## Current production source catalog
 
 The tracked v1 catalog currently includes live-verified public feeds for:

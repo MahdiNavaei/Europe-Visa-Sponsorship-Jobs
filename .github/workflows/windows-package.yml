@@ -75,6 +75,9 @@ jobs:
             --collect-all alembic `
             --collect-submodules uvicorn `
             --collect-submodules europe_visa_jobs `
+            --hidden-import h11 `
+            --hidden-import uvicorn.loops.asyncio `
+            --hidden-import uvicorn.protocols.http.h11_impl `
             --add-data "alembic.ini;." `
             --add-data "migrations;migrations" `
             --add-data "config/ranking.yaml;config" `
@@ -139,29 +142,19 @@ jobs:
             "{0}  {1}" -f (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower(), (Split-Path $portable -Leaf)
           )
           $hashes | Set-Content build/windows/installer/SHA256SUMS.txt -Encoding ascii
+          foreach ($artifact in @($installer, $portable)) {
+            $name = Split-Path $artifact -Leaf
+            $line = Get-Content build/windows/installer/SHA256SUMS.txt |
+              Where-Object { $_ -match "\s$name$" } |
+              Select-Object -First 1
+            if (-not $line) { throw "Checksum entry is missing for $name." }
+            $expected = ($line -split "\s+")[0]
+            $actual = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLower()
+            if ($expected -ne $actual) { throw "Checksum mismatch for $name." }
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Silent-install smoke test without Python or Node on PATH
-        shell: pwsh
-        run: |
-          $version = "${{ steps.package.outputs.version }}"
-          $installer = (Resolve-Path "build/windows/installer/CareerRadar-Setup-v$version.exe").Path
-          $installDir = Join-Path $env:RUNNER_TEMP "CareerRadarInstalled"
-          & $installer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed with exit code $LASTEXITCODE" }
-          if (-not (Test-Path "$installDir/CareerRadar.exe")) { throw "Installed launcher is missing." }
-          if (-not (Test-Path "$installDir/runtime/node.exe")) { throw "Bundled Node runtime is missing." }
-
-          $savedPath = $env:PATH
-          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          try {
-            & "$installDir/CareerRadar.exe" --smoke-test
-            if ($LASTEXITCODE -ne 0) { throw "Installed self-contained runtime smoke test failed with exit code $LASTEXITCODE" }
-          } finally {
-            $env:PATH = $savedPath
-          }
-
-      - name: Upload Windows packages
+      - name: Upload Windows packages before runtime smoke test
         uses: actions/upload-artifact@v4
         with:
           name: career-radar-windows-v${{ steps.package.outputs.version }}
@@ -171,6 +164,76 @@ jobs:
             build/windows/installer/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Validate package contents
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package.outputs.version }}"
+          $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          $portable = "build/windows/installer/CareerRadar-Portable-v$version.zip"
+          foreach ($path in @($installer, $portable, "build/windows/installer/SHA256SUMS.txt")) {
+            if (-not (Test-Path $path)) { throw "Required release file is missing: $path" }
+          }
+
+      - name: Silent-install smoke test without Python or Node on PATH
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package.outputs.version }}"
+          $installer = (Resolve-Path "build/windows/installer/CareerRadar-Setup-v$version.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed"
+          $smokeDataDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed Data"
+          if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }
+          if (Test-Path -LiteralPath $smokeDataDir) { Remove-Item -LiteralPath $smokeDataDir -Recurse -Force }
+          & $installer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed with exit code $LASTEXITCODE" }
+          foreach ($required in @(
+            "$installDir/CareerRadar.exe",
+            "$installDir/runtime/node.exe",
+            "$installDir/alembic.ini",
+            "$installDir/migrations",
+            "$installDir/config/ranking.yaml",
+            "$installDir/config/sources.json",
+            "$installDir/data/skills.yaml",
+            "$installDir/web-standalone"
+          )) {
+            if (-not (Test-Path -LiteralPath $required)) { throw "Installed runtime resource is missing: $required" }
+          }
+
+          $savedPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:CAREERRADAR_DATA_DIR = $smokeDataDir
+          $env:CAREERRADAR_SMOKE_SEED = "1"
+          try {
+            & "$installDir/CareerRadar.exe" --smoke-test
+            if ($LASTEXITCODE -ne 0) {
+              Get-ChildItem -LiteralPath "$smokeDataDir/logs" -ErrorAction SilentlyContinue |
+                ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+              throw "Installed self-contained runtime smoke test failed with exit code $LASTEXITCODE"
+            }
+
+            $portableDir = Join-Path $env:RUNNER_TEMP "Career Radar Portable"
+            $portableDataDir = Join-Path $env:RUNNER_TEMP "Career Radar Portable Data"
+            if (Test-Path -LiteralPath $portableDir) { Remove-Item -LiteralPath $portableDir -Recurse -Force }
+            if (Test-Path -LiteralPath $portableDataDir) { Remove-Item -LiteralPath $portableDataDir -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+            $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+            $portable = (Resolve-Path "build/windows/installer/CareerRadar-Portable-v$version.zip").Path
+            & $sevenZip x $portable "-o$portableDir" -y
+            if ($LASTEXITCODE -ne 0) { throw "Portable archive extraction failed with exit code $LASTEXITCODE" }
+            if (-not (Test-Path -LiteralPath "$portableDir/CareerRadar.exe")) { throw "Portable launcher is missing." }
+            if (-not (Test-Path -LiteralPath "$portableDir/runtime/node.exe")) { throw "Portable bundled Node runtime is missing." }
+            $env:CAREERRADAR_DATA_DIR = $portableDataDir
+            & "$portableDir/CareerRadar.exe" --smoke-test
+            if ($LASTEXITCODE -ne 0) {
+              Get-ChildItem -LiteralPath "$portableDataDir/logs" -ErrorAction SilentlyContinue |
+                ForEach-Object { Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+              throw "Portable self-contained runtime smoke test failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            $env:PATH = $savedPath
+            Remove-Item Env:CAREERRADAR_DATA_DIR -ErrorAction SilentlyContinue
+            Remove-Item Env:CAREERRADAR_SMOKE_SEED -ErrorAction SilentlyContinue
+          }
 
   publish-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -207,7 +270,11 @@ jobs:
 
           The desktop runtime stores its local SQLite database under `%LOCALAPPDATA%\\CareerRadar`, refreshes live ATS feeds on first launch, and refreshes again when data is older than 24 hours while the launcher is running.
 
+          Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy every calendar day.
+
           A portable ZIP and SHA-256 checksum file are included as well.
+
+          Advanced developers can use the repository's Docker/PostgreSQL/source installation documented in README.md.
 
           > The Windows package is currently unsigned. Windows SmartScreen may show an unknown-publisher warning until a code-signing certificate is configured.
           EOF
