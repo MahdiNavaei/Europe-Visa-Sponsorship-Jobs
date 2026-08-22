@@ -272,7 +272,14 @@ def _rank_recommendations(
         role=role,
         query=query,
     )
-    ranked = [item for item in engine.recommend(candidate, jobs, limit=500) if item.total_score >= min_score]
+    # Personalized recommendations should not turn a visa/country match into an
+    # irrelevant profession recommendation. The general Jobs page remains the
+    # place to browse every eligible technical role; this endpoint is a shortlist.
+    ranked = [
+        item
+        for item in engine.recommend(candidate, jobs, limit=500)
+        if item.total_score >= min_score and item.match.role_similarity >= 0.5
+    ]
     if sort == "newest":
         ranked.sort(
             key=lambda item: (

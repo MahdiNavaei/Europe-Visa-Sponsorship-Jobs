@@ -18,6 +18,16 @@ import { formatCountry } from "@/lib/utils/format";
 import { candidateSchema, type CandidateFormValues } from "@/lib/validators/candidate";
 
 const roles = [
+  "Machine Learning Engineer",
+  "Senior Machine Learning Engineer",
+  "AI Engineer",
+  "Senior AI Engineer",
+  "Applied Scientist",
+  "Data Scientist",
+  "ML Platform Engineer",
+  "MLOps Engineer",
+  "Generative AI Engineer",
+  "LLM Engineer",
   "AI / Machine Learning",
   "Backend Engineering",
   "Frontend Engineering",
@@ -25,7 +35,11 @@ const roles = [
   "Data Engineering",
   "DevOps / Cloud",
 ];
-const skills = ["Python", "TypeScript", "SQL", "PyTorch", "Machine Learning", "Docker", "Kubernetes", "AWS", "React", "FastAPI"];
+const skills = [
+  "Python", "Machine Learning", "Deep Learning", "PyTorch", "TensorFlow", "scikit-learn",
+  "SQL", "Docker", "Kubernetes", "AWS", "MLOps", "Natural Language Processing", "LLM", "RAG",
+  "LangChain", "PostgreSQL", "TypeScript", "React", "FastAPI",
+];
 const countries = ["Germany", "Netherlands", "Sweden", "Denmark", "Finland", "Ireland", "United Kingdom"];
 const steps = ["role", "skills", "experience", "countries", "visa", "remote"] as const;
 
@@ -298,6 +312,7 @@ function Choice({ children, selected, onClick, compact = false, disabled = false
     <button
       type="button"
       disabled={disabled}
+      aria-pressed={selected}
       onClick={onClick}
       className={cn(
         "focus-ring flex items-center gap-3 rounded-2xl border text-start text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60",

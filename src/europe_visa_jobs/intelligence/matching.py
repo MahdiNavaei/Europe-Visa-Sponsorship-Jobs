@@ -134,6 +134,14 @@ class CandidateMatcher:
         target_families = [classify_role(role) for role in target_roles]
         if family in target_families and family is not JobFamily.OTHER:
             return 1.0
+        related_families = {
+            JobFamily.AI_ML: {JobFamily.DATA_SCIENCE, JobFamily.MLOPS},
+            JobFamily.DATA_SCIENCE: {JobFamily.AI_ML, JobFamily.MLOPS},
+            JobFamily.MLOPS: {JobFamily.AI_ML, JobFamily.DATA_SCIENCE, JobFamily.DEVOPS_CLOUD},
+            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS},
+        }
+        if any(family in related_families.get(target, set()) for target in target_families):
+            return 0.75
         if any(role.casefold() in title_lower or title_lower in role.casefold() for role in target_roles):
             return 0.85
         return 0.2

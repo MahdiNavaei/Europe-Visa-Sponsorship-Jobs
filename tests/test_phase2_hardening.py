@@ -20,7 +20,7 @@ from scripts.seed_demo import seed_demo
 def test_ranking_configuration_is_loaded_from_yaml(tmp_path: Path):
     config_path = tmp_path / "ranking.yaml"
     config_path.write_text(
-        """visa_score:\n  weight: 0.40\nskill_score:\n  weight: 0.25\nexperience_score:\n  weight: 0.15\ncountry_score:\n  weight: 0.10\ncompany_score:\n  weight: 0.10\n""",
+        """visa_score:\n  weight: 0.40\nskill_score:\n  weight: 0.25\nexperience_score:\n  weight: 0.15\ncountry_score:\n  weight: 0.10\ncompany_score:\n  weight: 0.10\nrole_score:\n  weight: 0.00\n""",
         encoding="utf-8",
     )
     config = RankingConfig.from_yaml(config_path)
@@ -30,6 +30,7 @@ def test_ranking_configuration_is_loaded_from_yaml(tmp_path: Path):
         "experience": 0.15,
         "country": 0.1,
         "company": 0.1,
+        "role": 0.0,
     }
     assert load_ranking_config().as_dict() == RankingEngine().config.as_dict()
 
@@ -37,7 +38,7 @@ def test_ranking_configuration_is_loaded_from_yaml(tmp_path: Path):
 def test_invalid_ranking_configuration_is_rejected(tmp_path: Path):
     config_path = tmp_path / "ranking.yaml"
     config_path.write_text(
-        """visa_score:\n  weight: 0.9\nskill_score:\n  weight: 0\nexperience_score:\n  weight: 0\ncountry_score:\n  weight: 0\ncompany_score:\n  weight: 0\n""",
+        """visa_score:\n  weight: 0.9\nskill_score:\n  weight: 0\nexperience_score:\n  weight: 0\ncountry_score:\n  weight: 0\ncompany_score:\n  weight: 0\nrole_score:\n  weight: 0\n""",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="sum to 1"):
@@ -98,9 +99,9 @@ def test_recommendation_pagination_filters_and_structured_scores(session_factory
     app.dependency_overrides[get_db] = override_db
     client = TestClient(app)
     try:
-        page = client.get(f"/api/v1/recommendations/{candidate_id}", params={"limit": 1, "offset": 1})
+        page = client.get(f"/api/v1/recommendations/{candidate_id}", params={"limit": 1, "offset": 0})
         assert page.status_code == 200
-        assert page.headers["x-total-count"] == "2"
+        assert page.headers["x-total-count"] == "1"
         assert len(page.json()) == 1
         assert "scores" in page.json()[0]
         assert page.json()[0]["scores"]["overall"] == page.json()[0]["total_score"]
@@ -117,7 +118,7 @@ def test_recommendation_pagination_filters_and_structured_scores(session_factory
         assert [item["job"]["title"] for item in role.json()] == ["AI Engineer"]
 
         country = client.get(f"/api/v1/recommendations/{candidate_id}", params={"country": "Sweden"})
-        assert [item["job"]["country"] for item in country.json()] == ["Sweden"]
+        assert country.json() == []
 
         jobs = client.get("/api/v1/jobs", params={"category": "ai_ml", "visa_status": "eligible"})
         assert jobs.status_code == 200

@@ -33,8 +33,10 @@ class CandidateProfileParser:
     def _roles(text: str) -> list[str]:
         roles: list[str] = []
         for line in text.splitlines():
+            labelled = bool(re.match(r"^[\s•*-]*(?:title|role|position)\s*:", line, flags=re.IGNORECASE))
             cleaned = re.sub(r"^[\s•*-]*(?:title|role|position)\s*:\s*", "", line, flags=re.IGNORECASE).strip()
-            if cleaned and classify_role(cleaned).value != "other" and len(cleaned) <= 100:
+            context_only = re.search(r"\b(?:years?\s+of\s+experience|open\s+to|worked\s+with)\b", cleaned, flags=re.IGNORECASE)
+            if cleaned and not context_only and (labelled or not re.search(r"[.!?]$", cleaned)) and classify_role(cleaned).value != "other" and len(cleaned) <= 100:
                 roles.append(cleaned)
         return list(dict.fromkeys(roles))
 

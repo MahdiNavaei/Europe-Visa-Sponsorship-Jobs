@@ -18,14 +18,22 @@ class RankingConfig:
     experience: float = 0.15
     country: float = 0.10
     company: float = 0.10
+    role: float = 0.0
 
     def __post_init__(self) -> None:
-        weights = (self.visa, self.skill, self.experience, self.country, self.company)
+        weights = (self.visa, self.skill, self.experience, self.country, self.company, self.role)
         if any(weight < 0 for weight in weights) or abs(sum(weights) - 1.0) > 1e-9:
             raise ValueError("ranking weights must be non-negative and sum to 1")
 
     def as_dict(self) -> dict[str, float]:
-        return {"visa": self.visa, "skill": self.skill, "experience": self.experience, "country": self.country, "company": self.company}
+        return {
+            "visa": self.visa,
+            "skill": self.skill,
+            "experience": self.experience,
+            "country": self.country,
+            "company": self.company,
+            "role": self.role,
+        }
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> RankingConfig:
@@ -36,6 +44,8 @@ class RankingConfig:
         def weight(name: str) -> float:
             key = f"{name}_score"
             item = payload.get(key)
+            if name == "role" and item is None:
+                return 0.0
             if not isinstance(item, dict) or "weight" not in item:
                 raise ValueError(f"ranking configuration is missing {key}.weight")
             return float(item["weight"])
@@ -46,6 +56,7 @@ class RankingConfig:
             experience=weight("experience"),
             country=weight("country"),
             company=weight("company"),
+            role=weight("role"),
         )
 
 
@@ -86,5 +97,6 @@ class RankingEngine:
             + self.config.experience * match.experience_score
             + self.config.country * (match.country_score * 100)
             + self.config.company * match.company_score
+            + self.config.role * (match.role_similarity * 100)
         )
         return JobRecommendation(job=job, total_score=round(total, 2), match=match)
