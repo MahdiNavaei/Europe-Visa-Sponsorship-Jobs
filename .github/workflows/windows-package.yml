@@ -195,6 +195,7 @@ jobs:
             if (-not (Test-Path -LiteralPath $required)) { throw "Installed runtime resource is missing: $required" }
           }
 
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
           $savedPath = $env:PATH
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
           $env:CAREERRADAR_DATA_DIR = $smokeDataDir
@@ -212,7 +213,6 @@ jobs:
             if (Test-Path -LiteralPath $portableDir) { Remove-Item -LiteralPath $portableDir -Recurse -Force }
             if (Test-Path -LiteralPath $portableDataDir) { Remove-Item -LiteralPath $portableDataDir -Recurse -Force }
             New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-            $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
             $portable = (Resolve-Path "build/windows/installer/CareerRadar-Portable-v$version.zip").Path
             & $sevenZip x $portable "-o$portableDir" -y
             if ($LASTEXITCODE -ne 0) { throw "Portable archive extraction failed with exit code $LASTEXITCODE" }
