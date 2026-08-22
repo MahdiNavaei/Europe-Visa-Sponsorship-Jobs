@@ -319,6 +319,7 @@ def smoke_test(data_dir: Path) -> int:
             seed_smoke_data()
         services.start()
         health = read_json(f"{API_URL}/health")
+        from europe_visa_jobs import __version__
         if health.get("status") != "ok" or health.get("version") != __version__:
             raise RuntimeError(f"Unexpected API health response: {health!r}")
         jobs = read_json(f"{API_URL}/api/v1/jobs?limit=1")
