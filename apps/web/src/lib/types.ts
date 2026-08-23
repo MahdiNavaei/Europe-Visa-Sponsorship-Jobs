@@ -43,10 +43,10 @@ export interface Job {
   seniority: string | null;
   eligibility_status: EligibilityStatus | null;
   eligibility_score: number | null;
-  classification_status: "technical" | "nontechnical" | "classification_unknown";
-  job_sponsorship_signal: "confirmed_yes" | "confirmed_no" | "not_mentioned" | "conflicting";
-  company_sponsor_status: "verified_registry" | "not_found" | "not_applicable" | "unresolved";
-  final_candidate_eligibility: "eligible" | "unknown" | "rejected";
+  classification_status?: "technical" | "nontechnical" | "classification_unknown";
+  job_sponsorship_signal?: "confirmed_yes" | "confirmed_no" | "not_mentioned" | "conflicting";
+  company_sponsor_status?: "verified_registry" | "not_found" | "not_applicable" | "unresolved";
+  final_candidate_eligibility?: "eligible" | "unknown" | "rejected";
 }
 
 export interface Evidence {
