@@ -166,3 +166,13 @@ This passes the source-breadth gate, but it is not a release declaration.
 The AI/data/ML usefulness gate has passed, but the European technical-role
 gate remains short by 346 roles. The Windows package, remote merge, CI, tag,
 and published release remain gated on that completion.
+
+## Latest local recovery measurement — 2026-08-23
+
+The interrupted resumable-ingestion database was recovered by copying the
+SQLite database and its rollback journal before opening the copy. SQLite
+reported `integrity_check = ok`. The recovered database contains 4,182 active
+jobs and the coverage API reports 676 European technical jobs and 121
+European AI/data/ML jobs. This is current local evidence, not a release claim:
+the technical usefulness gate is still short by 324 jobs, and the packaged
+snapshot remains the separately validated 653-board artifact.
