@@ -11,8 +11,8 @@ _SPEC.loader.exec_module(validate_release_inputs)
 
 
 def test_release_version_sources_match():
-    assert validate_release_inputs.validate(require_snapshot=False) == "1.1.0"
+    assert validate_release_inputs.validate(require_snapshot=False) == "1.1.1"
 
 
 def test_release_validation_accepts_the_real_snapshot():
-    assert validate_release_inputs.validate(require_snapshot=True) == "1.1.0"
+    assert validate_release_inputs.validate(require_snapshot=True) == "1.1.1"
