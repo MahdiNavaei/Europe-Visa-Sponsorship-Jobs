@@ -21,7 +21,17 @@ class GreenhouseConnector(BaseConnector):
             except (ValueError, KeyError, TypeError) as exc:
                 raise ConnectorError("greenhouse: invalid jobs payload") from exc
             rows.extend(item for item in batch if isinstance(item, dict))
+            metadata = payload.get("meta") if isinstance(payload, dict) else None
+            total = metadata.get("total") if isinstance(metadata, dict) else None
             if len(batch) < 100:
+                break
+            if not isinstance(total, int):
+                # Some public boards return a 100-row response without the
+                # provider's total. Do not probe an unbounded next page and
+                # call it complete; preserve unseen jobs as a partial feed.
+                self.completeness = "partial"
+                break
+            if len(rows) >= total:
                 break
             page += 1
 

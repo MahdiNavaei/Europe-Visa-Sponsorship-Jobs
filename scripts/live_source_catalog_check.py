@@ -19,16 +19,28 @@ async def main() -> None:
     total_jobs = 0
 
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        for source in sources:
+        semaphore = asyncio.Semaphore(max(1, min(settings.discovery_concurrency, 8)))
+
+        async def validate(source):
             label = f"{source.provider.value}:{source.slug}"
-            try:
-                jobs = await build_connector(client, source).fetch_jobs()
-            except Exception as exc:
-                failures.append(f"{label}: {str(exc)[:240]}")
-                print(f"SOURCE_FAIL {label} error={str(exc)[:240]}")
-                continue
-            total_jobs += len(jobs)
-            print(f"SOURCE_OK {label} jobs={len(jobs)}")
+            async with semaphore:
+                try:
+                    jobs = await asyncio.wait_for(
+                        build_connector(client, source).fetch_jobs(),
+                        timeout=max(30.0, settings.request_timeout_seconds * 4),
+                    )
+                except Exception as exc:
+                    return label, 0, f"{label}: {str(exc)[:240]}"
+                return label, len(jobs), None
+
+        results = await asyncio.gather(*(validate(source) for source in sources))
+        for label, count, error in results:
+            if error:
+                failures.append(error)
+                print(f"SOURCE_FAIL {error}")
+            else:
+                total_jobs += count
+                print(f"SOURCE_OK {label} jobs={count}")
 
     if failures:
         raise AssertionError("configured live source catalog contains unhealthy feeds:\n" + "\n".join(failures))
