@@ -11,6 +11,8 @@ import type {
   Recommendation,
   RecommendationExplanation,
   Stats,
+  Coverage,
+  SourceHealth,
 } from "@/lib/types";
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -50,6 +52,8 @@ export const api = {
     request<Company[]>(`/api/v1/companies${country ? `?country=${encodeURIComponent(country)}` : ""}`),
   getCompany: (id: number) => request<CompanyIntelligence>(`/api/v1/companies/${id}`),
   getStats: () => request<Stats>("/api/v1/stats"),
+  getCoverage: () => request<Coverage>("/api/v1/coverage"),
+  getSourceHealth: () => request<SourceHealth[]>("/api/v1/sources/health?limit=5000"),
   getCountries: () => request<{ countries: string[] }>("/api/v1/countries"),
   createCandidate: (input: CandidateInput) =>
     request<Candidate>("/api/v1/candidates", { method: "POST", body: JSON.stringify(input) }),

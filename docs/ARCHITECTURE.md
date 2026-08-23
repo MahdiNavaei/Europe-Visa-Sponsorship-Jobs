@@ -16,11 +16,12 @@
 src/europe_visa_jobs/
 ├── api/            FastAPI application
 ├── connectors/     ATS-specific public feed adapters
+├── discovery/      additive board discovery, validation, and source orchestration
 ├── db/             SQLAlchemy models, session, repository
 ├── eligibility/    country rules, sponsor evidence, signal detector, engine
 ├── intelligence/   skill ontology, job analysis, matching, ranking, company scoring
 ├── ingestion/      source loading, sponsor import, ingestion pipeline, CLI
-├── utils/          text, country and role normalization
+├── utils/          text, country, remote-geography and role normalization
 ├── schemas.py      shared Pydantic domain models
 └── settings.py     environment configuration
 ```
@@ -40,12 +41,16 @@ Supported Phase-1 feeds:
 | Ashby | public Job Posting API |
 | Workable | public account job feed |
 | Personio | public careers XML feed |
+| Recruitee | public offers feed |
+| SmartRecruiters | public postings API |
+| Teamtailor | token-backed JSON:API or public JSON-LD boundary |
+| Workday | tenant-specific `wday/cxs` POST boundary |
 
 ## Ingestion flow
 
 ```text
 SourceConfig
-   ↓
+   ↓ (or verified Source registry entry)
 ATS connector
    ↓
 NormalizedJob[]
@@ -103,6 +108,9 @@ Tables:
 - `jobs`
 - `job_evidence`
 - `ingestion_runs`
+- `sources`
+- `discovery_runs`
+- `source_health_events`
 - `candidates`
 
 Phase 2 adds persisted job intelligence fields (`required_skills`, `preferred_skills`, minimum

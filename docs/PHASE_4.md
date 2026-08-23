@@ -120,7 +120,7 @@ This gate verifies the complete path:
 
 ### 9. Daily refresh behavior
 
-`.github/workflows/daily-ingest.yml` runs at `03:17 UTC` every day and can also be dispatched manually. It uses the real tracked source catalog in `config/sources.json`, migrates the persistent database, refreshes current jobs, marks disappeared source jobs inactive through the ingestion pipeline, and reports active/eligible/newest-posting counts.
+`.github/workflows/daily-ingest.yml` runs at `03:17 UTC` every day and can also be dispatched manually. It bootstraps `config/sources.json` into the persistent source registry when needed, then refreshes verified registry sources, marks disappeared source jobs inactive through the ingestion pipeline, and reports active/eligible/newest-posting counts. Dedicated source-discovery workflows expand the registry incrementally.
 
 The workflow intentionally fails loudly if the repository does not have a `DATABASE_URL` secret. CI can prove the network ingestion path with an ephemeral PostgreSQL service, but a deployed product needs a persistent PostgreSQL database shared with the deployed API for scheduled refreshes to persist between runs.
 
@@ -185,7 +185,7 @@ This is the final automated release gate.
 
 Visa and sponsorship results are deterministic, evidence-based signals. They are not legal advice and are not a guarantee that an employer will sponsor a particular applicant. Employer policy and immigration rules can change after data is collected.
 
-The source catalog is intentionally explicit and auditable rather than an unrestricted web crawler. Coverage grows by adding verified public ATS sources to `config/sources.json`.
+The packaged seed catalog remains explicit and auditable, but it is no longer the production source universe. Coverage grows through the persistent registry and bounded discovery workflows; `config/sources.json` is retained for bootstrap, priority sources, and deterministic fixtures.
 
 The v1.0.0 Windows binary is unsigned because the project does not have a
 code-signing certificate. Windows SmartScreen may therefore identify the

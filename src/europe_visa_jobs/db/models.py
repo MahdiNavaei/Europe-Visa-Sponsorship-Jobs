@@ -21,6 +21,83 @@ class Base(DeclarativeBase):
     pass
 
 
+class Source(Base):
+    """Persisted ATS board registry; static JSON is only a bootstrap input."""
+
+    __tablename__ = "sources"
+    __table_args__ = (
+        UniqueConstraint("provider", "board_identifier", name="uq_source_provider_board"),
+        Index("ix_sources_status_enabled", "status", "enabled"),
+        Index("ix_sources_provider_status", "provider", "status"),
+        Index("ix_sources_enabled_verified_provider_board", "enabled", "verified_at", "provider", "board_identifier"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    normalized_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    board_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    careers_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    board_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    country_hint: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    discovery_method: Mapped[str] = mapped_column(String(80), nullable=False, default="manual_seed")
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_health_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    raw_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    technical_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    active_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    eligible_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unknown_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rejected_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="unverified", nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    manual_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error_category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_fetch_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+
+
+class DiscoveryRun(Base):
+    __tablename__ = "discovery_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    methods: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    candidate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    validated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    invalid_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    provider_counts: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SourceHealthEvent(Base):
+    __tablename__ = "source_health_events"
+    __table_args__ = (Index("ix_source_health_events_source_observed", "source_id", "observed_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), nullable=False, index=True)
+    discovery_run_id: Mapped[int | None] = mapped_column(ForeignKey("discovery_runs.id", ondelete="SET NULL"), nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(30), nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_job_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
 class Candidate(Base):
     __tablename__ = "candidates"
 
@@ -92,6 +169,8 @@ class Job(Base):
     workplace_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     apply_url: Mapped[str] = mapped_column(Text, nullable=False)
     job_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canonical_apply_url: Mapped[str | None] = mapped_column(String(1000), nullable=True, index=True)
+    duplicate_of_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     job_family: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     required_skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)

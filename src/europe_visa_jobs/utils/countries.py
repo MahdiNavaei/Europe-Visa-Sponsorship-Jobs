@@ -22,6 +22,8 @@ COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
     "Switzerland": ("switzerland",),
 }
 
+EUROPEAN_COUNTRIES = frozenset(COUNTRY_ALIASES)
+
 CITY_COUNTRY: dict[str, str] = {
     "amsterdam": "Netherlands",
     "rotterdam": "Netherlands",

@@ -93,6 +93,45 @@ async def test_failed_refresh_does_not_deactivate_previous_jobs(db_session, monk
     assert remaining[0].active is True
 
 
+@pytest.mark.asyncio
+async def test_successful_refresh_closes_and_reactivates_jobs_without_duplicates(db_session, monkeypatch):
+    source = SourceConfig(provider="greenhouse", company_name="Acme", slug="acme", default_country="Germany")
+    snapshots = [
+        ["1", "2"],
+        ["1"],
+        ["1", "2"],
+    ]
+
+    class SequencedConnector:
+        async def fetch_jobs(self):
+            ids = snapshots.pop(0)
+            return [
+                NormalizedJob(
+                    external_id=external_id,
+                    provider=ATSProvider.GREENHOUSE,
+                    source_slug="acme",
+                    company_name="Acme",
+                    title="Backend Engineer",
+                    description="Sponsorship policy is available.",
+                    location="Berlin, Germany",
+                    country="Germany",
+                    apply_url=f"https://example.com/{external_id}",
+                )
+                for external_id in ids
+            ]
+
+    monkeypatch.setattr(pipeline, "build_connector", lambda client, source: SequencedConnector())
+    repo = Repository(db_session)
+    async with httpx.AsyncClient() as client:
+        await pipeline.ingest_source(db_session, source, client=client)
+        await pipeline.ingest_source(db_session, source, client=client)
+        assert repo.get_job(2).active is False
+        await pipeline.ingest_source(db_session, source, client=client)
+
+    assert repo.count_jobs(status=None) == 2
+    assert repo.get_job(2).active is True
+
+
 class DummySessionContext:
     def __enter__(self):
         return object()

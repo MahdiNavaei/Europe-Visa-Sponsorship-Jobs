@@ -10,7 +10,7 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country, n
 class PersonioConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
         domain = "com" if (self.source.region or "").casefold() == "com" else "de"
-        url = f"https://{self.source.slug}.jobs.personio.{domain}/xml"
+        url = self.endpoint(f"https://{self.source.slug}.jobs.personio.{domain}/xml")
         response = await self._get(url, params={"language": "en"})
         try:
             root = ElementTree.fromstring(response.text)

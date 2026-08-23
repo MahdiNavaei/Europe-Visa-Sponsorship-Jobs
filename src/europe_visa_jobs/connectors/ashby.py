@@ -8,7 +8,7 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country
 
 class AshbyConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
-        url = f"https://api.ashbyhq.com/posting-api/job-board/{self.source.slug}"
+        url = self.endpoint(f"https://api.ashbyhq.com/posting-api/job-board/{self.source.slug}")
         response = await self._get(url, params={"includeCompensation": "true"})
         try:
             payload = response.json()

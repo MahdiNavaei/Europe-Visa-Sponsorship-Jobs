@@ -85,6 +85,47 @@ export interface Stats {
   companies: number;
 }
 
+export interface Coverage {
+  configured_sources: number;
+  discovered_sources: number;
+  verified_sources: number;
+  healthy_sources: number;
+  degraded_sources: number;
+  failing_sources: number;
+  blocked_sources: number;
+  empty_sources: number;
+  sources_scanned_latest_run: number;
+  raw_jobs_scanned: number;
+  technical_jobs: number;
+  european_technical_jobs: number;
+  active_jobs: number;
+  ai_ml_jobs: number;
+  eligible_jobs: number;
+  unknown_jobs: number;
+  rejected_jobs: number;
+  last_refresh_at: string | null;
+}
+
+export interface SourceHealth {
+  id: number;
+  provider: string;
+  board_identifier: string;
+  company_name: string | null;
+  status: "healthy" | "degraded" | "failing" | "blocked" | "empty" | "disabled" | "unverified";
+  enabled: boolean;
+  manual_override: boolean;
+  consecutive_failures: number;
+  raw_job_count: number;
+  technical_job_count: number;
+  active_job_count: number;
+  eligible_job_count: number;
+  unknown_job_count: number;
+  rejected_job_count: number;
+  last_http_status: number | null;
+  last_error_category: string | null;
+  last_error: string | null;
+}
+
 export interface Candidate {
   id: number;
   name: string;

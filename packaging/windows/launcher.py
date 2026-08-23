@@ -144,10 +144,23 @@ def mark_refreshed(data_dir: Path) -> None:
 
 
 def refresh_jobs(data_dir: Path) -> None:
+    from europe_visa_jobs.db.session import SessionLocal
+    from europe_visa_jobs.db.source_registry import SourceRegistry
     from europe_visa_jobs.ingestion.cli import _ingest
+    from europe_visa_jobs.ingestion.sources import load_sources
 
     sources = bundle_dir() / "config" / "sources.json"
-    asyncio.run(_ingest(str(sources)))
+    # The packaged catalog is a safe first-run seed. Once a source has been
+    # validated, refreshes use the persistent registry and never regenerate a
+    # web-scale discovery pass during desktop startup.
+    with SessionLocal() as session:
+        registry = SourceRegistry(session)
+        if not registry.list_sources():
+            for config in load_sources(sources):
+                registry.import_config(config)
+            session.commit()
+        has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
+    asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
     mark_refreshed(data_dir)
 
 

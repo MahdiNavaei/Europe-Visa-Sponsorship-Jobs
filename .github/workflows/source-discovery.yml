@@ -1,0 +1,57 @@
+name: Source discovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Discovery mode
+        required: true
+        default: recent
+        type: choice
+        options: [recent, full]
+      limit:
+        description: Maximum candidates to validate
+        required: false
+        default: "250"
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src:.
+      DATABASE_URL: sqlite:///./source-discovery.sqlite
+      DISCOVERY_TIMEOUT_SECONDS: "15"
+      DISCOVERY_RETRY_ATTEMPTS: "2"
+      DISCOVERY_CONCURRENCY: "8"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Migrate and bootstrap registry
+        run: |
+          alembic upgrade head
+          evj-ingest sources bootstrap --config config/sources.json
+      - name: Discover and validate public ATS boards
+        env:
+          DISCOVERY_MODE: ${{ inputs.mode || 'recent' }}
+          DISCOVERY_LIMIT: ${{ inputs.limit || '250' }}
+        run: evj-ingest sources discover --mode "$DISCOVERY_MODE" --limit "$DISCOVERY_LIMIT"
+      - name: Export health and coverage evidence
+        run: evj-ingest sources health --json > source-coverage.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: source-coverage-${{ github.run_id }}
+          path: |
+            source-coverage.json
+            source-discovery.sqlite
+          retention-days: 30

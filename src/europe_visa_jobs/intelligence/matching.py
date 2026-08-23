@@ -8,6 +8,7 @@ from europe_visa_jobs.intelligence.job_profile import JobProfile, analyze_job
 from europe_visa_jobs.intelligence.ontology import SkillOntology
 from europe_visa_jobs.schemas import EligibilityStatus, JobFamily, PreferenceLevel, SeniorityLevel
 from europe_visa_jobs.utils.countries import normalize_country
+from europe_visa_jobs.utils.locations import remote_scope
 from europe_visa_jobs.utils.roles import classify_role
 
 
@@ -150,13 +151,22 @@ class CandidateMatcher:
     def _country_match(candidate: Candidate, job: Job) -> tuple[float, list[str], list[str]]:
         country = normalize_country(job.country) if job.country else None
         location = job.location.casefold()
+        remote_geography = remote_scope(job.location)
         excluded = [value.casefold() for value in candidate.excluded_locations]
         if any(value in location or value == (country or "").casefold() for value in excluded):
             return 0.0, [], ["The job location is excluded by the candidate."]
         preferred = {normalize_country(value).casefold() for value in candidate.preferred_countries}
-        country_score = 1.0 if country and country.casefold() in preferred else (0.65 if not preferred else 0.35)
+        if remote_geography == "us_only":
+            return 0.0, [], ["The remote role is restricted to the United States/North America."]
+        if remote_geography == "europe" and not country:
+            country_score = 0.65 if not preferred else 0.75
+        else:
+            country_score = 1.0 if country and country.casefold() in preferred else (0.65 if not preferred else 0.35)
         reasons = [f"The job is in preferred country {country}."] if country and country.casefold() in preferred else []
         warnings = [] if reasons or not preferred else [f"The job country {country or 'unknown'} is not in the preferred countries."]
+        if remote_geography == "europe" and not country:
+            reasons.append("The remote role is explicitly limited to Europe/EEA markets.")
+            warnings = []
 
         workplace = (job.workplace_type or "").casefold()
         is_remote = "remote" in workplace or "remote" in location
