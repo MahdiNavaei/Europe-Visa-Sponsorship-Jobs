@@ -134,7 +134,13 @@ def _write_refresh_state(data_dir: Path, payload: dict[str, Any]) -> None:
 
 
 def mark_refresh_started(data_dir: Path) -> None:
-    _write_refresh_state(data_dir, {"state": "syncing", "started_at": datetime.now(UTC).isoformat()})
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError, TypeError):
+        loaded = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            previous = loaded
+    previous.update({"state": "syncing", "started_at": datetime.now(UTC).isoformat(), "error": None})
+    _write_refresh_state(data_dir, previous)
 
 
 def refresh_due(data_dir: Path) -> bool:

@@ -56,3 +56,21 @@ def test_refresh_status_is_atomic_and_exposes_success_metadata(tmp_path: Path) -
     assert payload["sources_loaded"] == 12
     assert payload["jobs_loaded"] == 345
     assert not (tmp_path / "last-refresh.json.tmp").exists()
+
+
+def test_refresh_start_preserves_last_successful_sync(tmp_path: Path) -> None:
+    launcher = load_launcher_module()
+    launcher.mark_refreshed(
+        tmp_path,
+        manifest=SimpleNamespace(dataset_version="2026-08-24"),
+        stats={"sources_loaded": 12, "total_jobs": 345},
+    )
+    before = launcher.json.loads(launcher.last_refresh_path(tmp_path).read_text(encoding="utf-8"))
+
+    launcher.mark_refresh_started(tmp_path)
+    during = launcher.json.loads(launcher.last_refresh_path(tmp_path).read_text(encoding="utf-8"))
+
+    assert during["state"] == "syncing"
+    assert during["last_successful_sync"] == before["last_successful_sync"]
+    assert during["dataset_version"] == "2026-08-24"
+    assert during["error"] is None
