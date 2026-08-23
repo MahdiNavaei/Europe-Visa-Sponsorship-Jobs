@@ -139,7 +139,8 @@ evidence, but current Cloudflare blocking prevents claiming fresh broad Ashby
 coverage. Personio, Teamtailor, Recruitee, SmartRecruiters, and Workday remain
 experimental until a live source is validated and ingested.
 
-The final completion audit still requires the full backend/frontend/browser,
-PostgreSQL/SQLite, security, Lighthouse, Docker, Windows, and clean-PR gates
-to run against the final committed branch. No release tag or published release
-was retargeted or published during this Prompt 1 work.
+The full PR #9 audit passed on the pushed implementation: backend tests on
+Python 3.11/3.12, frontend/browser, PostgreSQL integration, live ingestion E2E,
+security, Lighthouse, Docker/acceptance, and Windows packaging. The release
+publish job was skipped. No release tag or published release was retargeted or
+published during this Prompt 1 work.
