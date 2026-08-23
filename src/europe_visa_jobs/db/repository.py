@@ -214,6 +214,7 @@ class Repository:
         *,
         country: str | None = None,
         status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+        include_unknown: bool = False,
         job_family: str | None = None,
         company_id: int | None = None,
         query: str | None = None,
@@ -227,6 +228,8 @@ class Repository:
             stmt = stmt.where(Job.country == country)
         if status:
             stmt = stmt.where(Job.eligibility_status == status.value)
+        elif include_unknown:
+            stmt = stmt.where(Job.eligibility_status.in_([EligibilityStatus.ELIGIBLE.value, EligibilityStatus.UNKNOWN.value]))
         if job_family:
             stmt = stmt.where(Job.job_family == job_family)
         if company_id is not None:
@@ -258,6 +261,7 @@ class Repository:
         *,
         country: str | None = None,
         status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+        include_unknown: bool = False,
         job_family: str | None = None,
         company_id: int | None = None,
         query: str | None = None,
@@ -268,6 +272,8 @@ class Repository:
             stmt = stmt.where(Job.country == country)
         if status:
             stmt = stmt.where(Job.eligibility_status == status.value)
+        elif include_unknown:
+            stmt = stmt.where(Job.eligibility_status.in_([EligibilityStatus.ELIGIBLE.value, EligibilityStatus.UNKNOWN.value]))
         if job_family:
             stmt = stmt.where(Job.job_family == job_family)
         if company_id is not None:

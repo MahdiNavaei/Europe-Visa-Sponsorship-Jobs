@@ -130,10 +130,12 @@ def list_jobs(
 ) -> list[JobRead]:
     repo = Repository(session)
     resolved_status = visa_status if visa_status is not None else status
+    browse_default = resolved_status is None
     resolved_family = job_family or category
     jobs = repo.list_jobs(
         country=country,
         status=resolved_status,
+        include_unknown=browse_default,
         job_family=resolved_family,
         company_id=company_id,
         query=query,
@@ -146,6 +148,7 @@ def list_jobs(
         repo.count_jobs(
             country=country,
             status=resolved_status,
+            include_unknown=browse_default,
             job_family=resolved_family,
             company_id=company_id,
             query=query,
@@ -369,7 +372,7 @@ def recommendations(
     role: str | None = None,
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
-    include_unknown: bool = False,
+    include_unknown: bool = True,
     sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> list[JobRecommendationRead]:
     ranked, total = _rank_recommendations(
@@ -400,7 +403,7 @@ def explain_recommendations(
     role: str | None = None,
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
-    include_unknown: bool = False,
+    include_unknown: bool = True,
     sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> RecommendationExplanationRead:
     repo = Repository(session)

@@ -6,7 +6,7 @@ from europe_visa_jobs.api.app import app
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.schemas import ATSProvider, NormalizedJob
+from europe_visa_jobs.schemas import ATSProvider, EligibilityStatus, NormalizedJob
 
 
 def seed(session_factory):
@@ -109,6 +109,45 @@ def test_catalog_status_is_read_only_and_safe_when_not_configured(monkeypatch):
         "partial_success": False,
         "error": None,
     }
+
+
+def test_default_jobs_browse_includes_unknown_but_excludes_rejected(session_factory):
+    with session_factory() as session:
+        repo = Repository(session)
+        for index, status in enumerate((EligibilityStatus.ELIGIBLE, EligibilityStatus.UNKNOWN, EligibilityStatus.REJECTED)):
+            job = NormalizedJob(
+                external_id=f"browse-policy-{index}",
+                provider=ATSProvider.GREENHOUSE,
+                source_slug="browse-policy",
+                company_name="Browse Policy Labs",
+                title="Backend Engineer",
+                description="Visa sponsorship and relocation support are available.",
+                location="Berlin, Germany",
+                country="Germany",
+                apply_url=f"https://example.com/browse/{index}",
+            )
+            stored = repo.upsert_job(job, EligibilityEngine().assess(job))
+            stored.eligibility_status = status.value
+        session.commit()
+
+    def override_db():
+        with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        default = client.get("/api/v1/jobs", params={"query": "Browse Policy"})
+        assert default.status_code == 200
+        assert {item["eligibility_status"] for item in default.json()} == {"eligible", "unknown"}
+        assert default.headers["X-Total-Count"] == "2"
+
+        rejected = client.get("/api/v1/jobs", params={"query": "Browse Policy", "status": "rejected"})
+        assert rejected.status_code == 200
+        assert len(rejected.json()) == 1
+        assert rejected.json()[0]["eligibility_status"] == "rejected"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_company_metrics_use_full_active_catalog_not_first_page(session_factory):
