@@ -1,11 +1,13 @@
 # Deterministic recommendation weights. Values must be non-negative and sum to 1.0.
 visa_score:
-  weight: 0.35
-skill_score:
   weight: 0.30
+skill_score:
+  weight: 0.20
 experience_score:
-  weight: 0.15
+  weight: 0.10
 country_score:
   weight: 0.10
 company_score:
-  weight: 0.10
+  weight: 0.05
+role_score:
+  weight: 0.25

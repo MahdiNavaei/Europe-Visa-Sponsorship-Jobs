@@ -100,6 +100,11 @@ async function installBaseApi(page: Page) {
     if (request.method() === "PUT" && path === "/api/v1/candidates/11") return json(route, candidate);
     if (path === "/api/v1/candidates/11") return json(route, candidate);
     if (path === "/api/v1/stats") return json(route, { total_jobs: 21, eligible_jobs: 18, rejected_jobs: 2, unknown_jobs: 1, companies: 8 });
+    if (path === "/api/v1/coverage") return json(route, { configured_sources: 15, discovered_sources: 120, verified_sources: 100, healthy_sources: 94, degraded_sources: 3, failing_sources: 2, blocked_sources: 1, empty_sources: 0, sources_scanned_latest_run: 100, raw_jobs_scanned: 12000, technical_jobs: 5000, european_technical_jobs: 4300, active_jobs: 4800, ai_ml_jobs: 900, eligible_jobs: 300, unknown_jobs: 4300, rejected_jobs: 200, last_refresh_at: "2026-08-22T12:00:00Z" });
+    if (path === "/api/v1/sources/health") return json(route, [
+      { id: 1, provider: "greenhouse", board_identifier: "northstar", company_name: "Northstar Labs", status: "healthy", enabled: true, manual_override: true, consecutive_failures: 0, raw_job_count: 120, technical_job_count: 80, active_job_count: 80, eligible_job_count: 12, unknown_job_count: 68, rejected_job_count: 0, last_http_status: 200, last_error_category: null, last_error: null },
+      { id: 2, provider: "lever", board_identifier: "legacy", company_name: "Legacy Labs", status: "degraded", enabled: true, manual_override: false, consecutive_failures: 1, raw_job_count: 0, technical_job_count: 0, active_job_count: 0, eligible_job_count: 0, unknown_job_count: 0, rejected_job_count: 0, last_http_status: 404, last_error_category: "not_found", last_error: "not found" },
+    ]);
     if (path === "/api/v1/countries") return json(route, { countries: ["Germany", "Netherlands", "Sweden"] });
     if (path === "/api/v1/jobs/7") {
       return json(route, {
@@ -137,6 +142,15 @@ async function installBaseApi(page: Page) {
 async function setCandidate(page: Page) {
   await page.addInitScript(() => window.localStorage.setItem("career-radar-candidate", "11"));
 }
+
+test("coverage view states monitored scope and preserves unknown sponsorship count", async ({ page }) => {
+  await installBaseApi(page);
+  await page.goto("/en/coverage");
+  await expect(page.getByRole("heading", { name: "Verified European job coverage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Source health diagnostics" })).toBeVisible();
+  await expect(page.getByRole("paragraph").filter({ hasText: "Unknown" }).getByRole("strong")).toHaveText("4,300");
+  await expect(page.getByText("Active technical jobs")).toBeVisible();
+});
 
 test("language switch performs a real English to Persian RTL navigation", async ({ page }) => {
   await page.goto("/en");
@@ -253,7 +267,9 @@ test("personalized jobs send server filters, sorting and pagination parameters",
   await expect.poll(() => sawFilteredRequest).toBe(true);
   await expect(page.getByText("Filtered Senior AI Engineer")).toBeVisible();
 
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  const nextPage = page.getByRole("button", { name: "Next", exact: true });
+  await expect(nextPage).toBeEnabled();
+  await nextPage.click();
   await expect.poll(() => sawNextPage).toBe(true);
   await expect(page.getByText("AI Platform Engineer")).toBeVisible();
 });

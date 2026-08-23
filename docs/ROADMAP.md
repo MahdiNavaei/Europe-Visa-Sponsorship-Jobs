@@ -91,3 +91,7 @@ must all be completed before the release is called finished.
 ## After v1
 
 The strongest next improvements are broader verified source coverage, additional European sponsor registries, richer country-rule maintenance, and deployment/operations for a public hosted instance. New sources should be added only when their public ATS endpoint can be health-checked and their normalized output passes the same live-data validation used by v1.
+
+## Source coverage architecture
+
+The persistent source registry, additive Wayback/Common Crawl/urlscan discovery, provider health lifecycle, bounded retries/cache, coverage API/UI, and scheduled workflows are documented in [`SOURCE_DISCOVERY.md`](SOURCE_DISCOVERY.md). The first measured live run is recorded in [`SOURCE_COVERAGE_REPORT.md`](SOURCE_COVERAGE_REPORT.md); its counts are deliberately limited to validated public feeds rather than unverified archive candidates.

@@ -56,6 +56,36 @@
     "careers_url": "https://www.prisma-capacity.eu/careers"
   },
   {
+    "provider": "greenhouse",
+    "company_name": "Wise",
+    "slug": "wise",
+    "careers_url": "https://wise.jobs/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "GitLab",
+    "slug": "gitlab",
+    "careers_url": "https://about.gitlab.com/jobs/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Moonfare",
+    "slug": "moonfare",
+    "careers_url": "https://www.moonfare.com/careers"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Contentful",
+    "slug": "contentful",
+    "careers_url": "https://www.contentful.com/careers/"
+  },
+  {
+    "provider": "greenhouse",
+    "company_name": "Elastic",
+    "slug": "elastic",
+    "careers_url": "https://www.elastic.co/about/careers"
+  },
+  {
     "provider": "ashby",
     "company_name": "Clera",
     "slug": "Clera",

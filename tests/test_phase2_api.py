@@ -54,6 +54,7 @@ def test_candidate_and_recommendation_endpoints(session_factory):
 
         explanation = client.get(f"/api/v1/recommendations/{candidate['id']}/explain")
         assert explanation.status_code == 200
-        assert explanation.json()["weights"]["visa"] == 0.35
+        assert explanation.json()["weights"]["visa"] == 0.3
+        assert explanation.json()["weights"]["role"] == 0.25
     finally:
         app.dependency_overrides.clear()

@@ -1,0 +1,43 @@
+name: Source health retry
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: src:.
+      DATABASE_URL: sqlite:///./source-health.sqlite
+      REQUEST_TIMEOUT_SECONDS: "15"
+      INGESTION_CONCURRENCY: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Prepare registry
+        run: |
+          alembic upgrade head
+          evj-ingest sources bootstrap --config config/sources.json
+          evj-ingest sources discover --mode recent --limit 100
+      - name: Retry failed sources without deleting prior jobs
+        run: evj-ingest sources retry-failed --limit 100 || true
+      - name: Export health evidence
+        run: evj-ingest sources health --json > source-health.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: source-health-${{ github.run_id }}
+          path: |
+            source-health.json
+            source-health.sqlite
+          retention-days: 14

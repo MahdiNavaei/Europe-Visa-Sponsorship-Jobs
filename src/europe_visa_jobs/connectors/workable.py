@@ -8,7 +8,7 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country
 
 class WorkableConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
-        url = f"https://apply.workable.com/api/v1/widget/accounts/{self.source.slug}"
+        url = self.endpoint(f"https://apply.workable.com/api/v1/widget/accounts/{self.source.slug}")
         response = await self._get(url, params={"details": "true"})
         try:
             payload = response.json()

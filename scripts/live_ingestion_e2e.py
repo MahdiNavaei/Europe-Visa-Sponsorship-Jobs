@@ -18,6 +18,13 @@ SOURCES_PATH = "config/sources.live-smoke.json"
 MAX_POST_AGE_DAYS = 60
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalize SQLite's naive timestamps before comparing live-ingestion ages."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def _job_snapshot(slugs: set[str]) -> dict[tuple[str, str, str], Job]:
     with SessionLocal() as session:
         rows = session.scalars(
@@ -62,7 +69,7 @@ async def main() -> None:
         )
 
     recent_cutoff = datetime.now(UTC) - timedelta(days=MAX_POST_AGE_DAYS)
-    recent = [job for job in second.values() if job.posted_at and job.posted_at >= recent_cutoff]
+    recent = [job for job in second.values() if (_as_utc(job.posted_at) or datetime.min.replace(tzinfo=UTC)) >= recent_cutoff]
     if not recent:
         newest = max((job.posted_at for job in second.values() if job.posted_at), default=None)
         raise AssertionError(
@@ -103,7 +110,7 @@ async def main() -> None:
                     "posted_at": job.posted_at.isoformat() if job.posted_at else None,
                     "status": job.eligibility_status,
                 }
-                for job in sorted(eligible, key=lambda item: item.posted_at or datetime.min.replace(tzinfo=UTC), reverse=True)[:5]
+                for job in sorted(eligible, key=lambda item: _as_utc(item.posted_at) or datetime.min.replace(tzinfo=UTC), reverse=True)[:5]
             ]
         )
     )

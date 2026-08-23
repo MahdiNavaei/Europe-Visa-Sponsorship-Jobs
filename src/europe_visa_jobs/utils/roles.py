@@ -6,14 +6,34 @@ from europe_visa_jobs.schemas import JobFamily
 
 ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
     (JobFamily.MLOPS, (r"\bmlops\b", r"machine learning platform", r"ml platform")),
-    (JobFamily.AI_ML, (r"machine learning", r"\bml engineer", r"\bai engineer", r"artificial intelligence", r"\bnlp\b", r"computer vision", r"applied scientist", r"\bllm\b")),
-    (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform")),
-    (JobFamily.DATA_SCIENCE, (r"data scientist", r"decision scientist")),
+    (
+        JobFamily.AI_ML,
+        (
+            r"machine learning",
+            r"\bml engineer",
+            r"\bai\s*/\s*ml\b",
+            r"\bai\s+(?:engineer|scientist|researcher|developer)\b",
+            r"\b(?:edge|generative)\s+ai\b",
+            r"artificial intelligence",
+            r"\bnlp\b",
+            r"computer vision",
+            r"applied scientist",
+            r"\bllm\b",
+            r"deep learning",
+            r"generative ai",
+            r"\bgenai\b",
+            r"\brag\b",
+        ),
+    ),
+    # A bare "data platform" phrase also appears in non-technical product and
+    # programme titles. Require an explicit technical role after the phrase.
+    (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform\b.*\b(?:engineer|architect|developer)")),
+    (JobFamily.DATA_SCIENCE, (r"data scientist", r"data science", r"decision scientist")),
     (JobFamily.FRONTEND, (r"front[ -]?end", r"frontend", r"react developer", r"ui engineer")),
     (JobFamily.BACKEND, (r"back[ -]?end", r"backend", r"server[- ]side")),
     (JobFamily.FULLSTACK, (r"full[ -]?stack", r"fullstack")),
     (JobFamily.MOBILE, (r"mobile engineer", r"android", r"ios engineer", r"flutter")),
-    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"platform engineer", r"infrastructure engineer")),
+    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"\bplatform engineer\b", r"\binfrastructure engineer\b")),
     (JobFamily.QA_AUTOMATION, (r"qa automation", r"test automation", r"quality engineer", r"software test")),
     (JobFamily.SOFTWARE_ENGINEERING, (r"software engineer", r"software developer", r"developer")),
 )

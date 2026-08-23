@@ -63,6 +63,7 @@ jobs:
           if ($backendVersion -ne $webVersion) {
             throw "Backend version $backendVersion does not match web version $webVersion"
           }
+          python scripts/validate_release_inputs.py --require-snapshot
 
       - name: Install and build web production bundle
         shell: pwsh
@@ -97,6 +98,8 @@ jobs:
             --add-data "migrations;migrations" `
             --add-data "config/ranking.yaml;config" `
             --add-data "config/sources.json;config" `
+            --add-data "config/source-registry.snapshot.json;config" `
+            --add-data "data/sponsors.csv.gz;data" `
             --add-data "data/skills.yaml;data"
 
           Copy-Item dist/CareerRadar.exe build/windows/app/CareerRadar.exe

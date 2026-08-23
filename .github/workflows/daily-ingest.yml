@@ -55,8 +55,16 @@ jobs:
       - name: Migrate database
         run: alembic upgrade head
 
-      - name: Ingest current jobs from public ATS feeds
-        run: evj-ingest jobs --sources config/sources.json
+      - name: Load official sponsor evidence before eligibility ingestion
+        run: evj-ingest sponsors --production --file data/sponsors.csv
+
+      - name: Bootstrap and validate priority seeds
+        run: |
+          evj-ingest sources bootstrap --config config/sources.json
+          evj-ingest sources discover --mode recent --method manual --limit 100
+
+      - name: Ingest current jobs from verified registry sources
+        run: evj-ingest jobs --registry
 
       - name: Report persisted ingestion result
         run: |

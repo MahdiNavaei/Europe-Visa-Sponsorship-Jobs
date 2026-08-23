@@ -1,13 +1,19 @@
 from europe_visa_jobs.schemas import JobFamily
-from europe_visa_jobs.utils import classify_role, infer_country, normalize_company_name
+from europe_visa_jobs.utils import (
+    classify_role,
+    infer_country,
+    normalize_company_name,
+    remote_scope,
+)
 
 
 def test_country_inference_uses_country_city_and_default():
     assert infer_country("Amsterdam, Netherlands") == "Netherlands"
     assert infer_country("Berlin") == "Germany"
+    assert infer_country("Barcelona") == "Spain"
+    assert infer_country("Kyiv, Ukraine") == "Ukraine"
     assert infer_country("Remote", "Ireland") == "Ireland"
     assert infer_country("Remote") is None
-    assert infer_country("Kyiv, Ukraine") is None
 
 
 def test_role_classifier_covers_target_families():
@@ -21,3 +27,11 @@ def test_role_classifier_covers_target_families():
 def test_company_normalization_removes_legal_suffixes():
     assert normalize_company_name("Example Technologies GmbH") == "example technologies"
     assert normalize_company_name("Foo & Bar B.V.") == "foo and bar"
+
+
+def test_remote_scope_distinguishes_europe_us_and_worldwide():
+    assert remote_scope("Remote - Germany") == "unspecified"
+    assert remote_scope("Remote - EU") == "europe"
+    assert remote_scope("Remote - EMEA") == "europe"
+    assert remote_scope("Remote - US only") == "us_only"
+    assert remote_scope("Remote - Worldwide") == "worldwide"

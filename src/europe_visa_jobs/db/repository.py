@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
@@ -17,6 +18,23 @@ from europe_visa_jobs.schemas import (
     NormalizedJob,
 )
 from europe_visa_jobs.utils import classify_role, normalize_company_name, normalize_country
+
+_TRACKING_QUERY_KEYS = {"fbclid", "gclid", "ref", "source", "utm_campaign", "utm_medium", "utm_source", "utm_term"}
+
+
+def canonicalize_apply_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    parts = urlsplit(value.strip())
+    if not parts.netloc:
+        return None
+    query = urlencode([
+        (key, item)
+        for key, item in parse_qsl(parts.query, keep_blank_values=True)
+        if key.casefold() not in _TRACKING_QUERY_KEYS
+    ])
+    path = parts.path.rstrip("/") or "/"
+    return urlunsplit((parts.scheme.casefold() or "https", parts.netloc.casefold(), path, query, ""))
 
 
 class Repository:
@@ -66,6 +84,7 @@ class Repository:
             sponsor_verified=sponsor is not None,
         )
         profile = analyze_job(normalized_job.title, normalized_job.description, normalized_job.job_family)
+        canonical_apply_url = canonicalize_apply_url(normalized_job.apply_url)
         stmt = select(Job).where(
             Job.provider == normalized_job.provider.value,
             Job.source_slug == normalized_job.source_slug,
@@ -88,6 +107,7 @@ class Repository:
                 workplace_type=normalized_job.workplace_type,
                 apply_url=normalized_job.apply_url,
                 job_url=normalized_job.job_url,
+                canonical_apply_url=canonical_apply_url,
                 posted_at=normalized_job.posted_at,
                 job_family=normalized_job.job_family.value,
                 required_skills=profile.required_skills,
@@ -111,6 +131,7 @@ class Repository:
             job.workplace_type = normalized_job.workplace_type
             job.apply_url = normalized_job.apply_url
             job.job_url = normalized_job.job_url
+            job.canonical_apply_url = canonical_apply_url
             job.posted_at = normalized_job.posted_at
             job.job_family = normalized_job.job_family.value
             job.required_skills = profile.required_skills
@@ -123,6 +144,19 @@ class Repository:
             job.active = True
             job.evidence.clear()
             self.session.flush()
+
+        if canonical_apply_url:
+            duplicate = self.session.scalar(
+                select(Job)
+                .where(
+                    Job.canonical_apply_url == canonical_apply_url,
+                    Job.id != job.id,
+                    Job.active.is_(True),
+                    Job.company_id == company.id,
+                )
+                .order_by(Job.id)
+            )
+            job.duplicate_of_job_id = duplicate.id if duplicate is not None else None
 
         for item in assessment.evidence:
             job.evidence.append(
@@ -376,6 +410,34 @@ class Repository:
 
     def sponsor_evidence(self) -> list[CompanySponsorEvidence]:
         records = self.session.scalars(select(SponsorRecord)).all()
+        return [
+            CompanySponsorEvidence(
+                company_name=item.company_name,
+                country=item.country,
+                registry_name=item.registry_name,
+                source_url=item.source_url,
+            )
+            for item in records
+        ]
+
+    def sponsor_evidence_for_jobs(self, jobs: list[NormalizedJob]) -> list[CompanySponsorEvidence]:
+        """Read only evidence that can apply to the current source snapshot.
+
+        A national sponsor register can contain hundreds of thousands of rows.
+        Loading every row before every desktop refresh wastes memory and delays
+        first results. Company/country lookup is indexed and preserves the same
+        exact matching semantics as :meth:`sponsor_evidence`.
+        """
+        names = {normalize_company_name(job.company_name) for job in jobs if job.company_name}
+        countries = {job.country for job in jobs if job.country}
+        if not names or not countries:
+            return []
+        records = self.session.scalars(
+            select(SponsorRecord).where(
+                SponsorRecord.normalized_name.in_(names),
+                SponsorRecord.country.in_(countries),
+            )
+        ).all()
         return [
             CompanySponsorEvidence(
                 company_name=item.company_name,

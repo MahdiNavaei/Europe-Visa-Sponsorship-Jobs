@@ -12,6 +12,7 @@ from europe_visa_jobs import __version__
 from europe_visa_jobs.api.tracking import router as tracking_router
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db, init_db
+from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.eligibility import CountryRulesRegistry
 from europe_visa_jobs.intelligence.company import CompanyIntelligenceScorer
 from europe_visa_jobs.intelligence.ranking import JobRecommendation, RankingEngine
@@ -20,12 +21,14 @@ from europe_visa_jobs.schemas import (
     CandidateRead,
     CompanyIntelligenceRead,
     CompanyRead,
+    CoverageRead,
     EligibilityStatus,
     JobDetailRead,
     JobRead,
     JobRecommendationRead,
     RecommendationExplanationRead,
     RecommendationScoresRead,
+    SourceHealthRead,
     StatsRead,
 )
 from europe_visa_jobs.settings import get_settings
@@ -187,6 +190,23 @@ def stats(session: SessionDep) -> StatsRead:
     return StatsRead.model_validate(Repository(session).stats())
 
 
+@app.get("/api/v1/coverage", response_model=CoverageRead)
+def coverage(session: SessionDep) -> CoverageRead:
+    """Return source-discovery and live-ingestion coverage, including explicit unknowns."""
+    return CoverageRead.model_validate(SourceRegistry(session).coverage())
+
+
+@app.get("/api/v1/sources/health", response_model=list[SourceHealthRead])
+def source_health(
+    session: SessionDep,
+    status: str | None = None,
+    limit: int = Query(default=500, ge=1, le=5000),
+) -> list[SourceHealthRead]:
+    statuses = {status} if status else None
+    sources = SourceRegistry(session).list_sources(statuses=statuses, limit=limit)
+    return [SourceHealthRead.model_validate(item) for item in sources]
+
+
 def _recommendation_read(item: JobRecommendation) -> JobRecommendationRead:
     match = item.match
     return JobRecommendationRead(
@@ -272,7 +292,14 @@ def _rank_recommendations(
         role=role,
         query=query,
     )
-    ranked = [item for item in engine.recommend(candidate, jobs, limit=500) if item.total_score >= min_score]
+    # Personalized recommendations should not turn a visa/country match into an
+    # irrelevant profession recommendation. The general Jobs page remains the
+    # place to browse every eligible technical role; this endpoint is a shortlist.
+    ranked = [
+        item
+        for item in engine.recommend(candidate, jobs, limit=500)
+        if item.total_score >= min_score and item.match.role_similarity >= 0.5
+    ]
     if sort == "newest":
         ranked.sort(
             key=lambda item: (

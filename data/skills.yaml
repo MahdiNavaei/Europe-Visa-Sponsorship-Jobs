@@ -39,6 +39,9 @@ skills:
   - canonical: RAG
     aliases: [rag, retrieval augmented generation, retrieval-augmented generation]
     categories: [machine_learning]
+  - canonical: Deep Learning
+    aliases: [deep learning, deep neural networks, neural networks]
+    categories: [machine_learning]
   - canonical: Natural Language Processing
     aliases: [nlp, natural language processing]
     categories: [machine_learning]
@@ -48,6 +51,12 @@ skills:
   - canonical: MLflow
     aliases: [mlflow, ml flow]
     categories: [machine_learning]
+  - canonical: LangChain
+    aliases: [langchain, lang chain]
+    categories: [machine_learning]
+  - canonical: MLOps
+    aliases: [mlops, ml ops]
+    categories: [machine_learning, devops]
   - canonical: Kubernetes
     aliases: [kubernetes, k8s]
     categories: [cloud]

@@ -8,6 +8,14 @@ export function useStats() {
   return useQuery({ queryKey: ["stats"], queryFn: api.getStats, staleTime: 60_000 });
 }
 
+export function useCoverage() {
+  return useQuery({ queryKey: ["coverage"], queryFn: api.getCoverage, staleTime: 60_000 });
+}
+
+export function useSourceHealth() {
+  return useQuery({ queryKey: ["source-health"], queryFn: api.getSourceHealth, staleTime: 60_000 });
+}
+
 export function useCountries() {
   return useQuery({ queryKey: ["countries"], queryFn: api.getCountries, staleTime: 300_000 });
 }

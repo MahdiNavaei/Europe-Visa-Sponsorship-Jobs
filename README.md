@@ -2,7 +2,7 @@
 
 > Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship or relocation support.
 
-**v1.0.0** turns public company ATS feeds into a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
+**Career Radar v1.1.0** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
 
 It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, inspectable, reproducible, and backed by stored evidence.
 
@@ -13,12 +13,12 @@ It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, i
 For most Windows users, no developer setup is needed.
 
 1. Open **GitHub Releases**.
-2. Download `CareerRadar-Setup-v1.0.0.exe`.
+2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.0.exe`).
 3. Install and launch **Career Radar**.
 
 The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
 
-On first launch it creates a local SQLite database, fetches live ATS jobs, starts the API and web app on loopback-only ports, and opens the browser automatically. A portable ZIP and SHA-256 checksums are published with the installer as well.
+The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
 
 See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
 
@@ -35,16 +35,16 @@ Career Radar treats those sentences as first-class eligibility data rather than 
 
 A company appearing in a sponsor register is **not** enough to approve every vacancy. Job-level evidence still matters, and hard negative restrictions always win.
 
-## What v1.0 includes
+## What v1.1 includes
 
 - Public ATS connectors: Greenhouse, Lever, Ashby, Workable, Personio
-- Explicit, audited production source catalog in `config/sources.json`
+- Generated, validated source-registry snapshot for desktop bootstrap (the release build rejects a snapshot with fewer than 500 verified boards)
 - Daily source refresh workflow
 - Technical-role classification
 - Country inference and normalized job identity
 - Visa, relocation, international-candidate, and hard-restriction detection
 - Country-specific immigration rule registry
-- Verified sponsor-registry evidence store
+- Compressed official UKVI and IND sponsor-registry evidence cache, loaded before production eligibility analysis
 - Strict `eligible / rejected / unknown` eligibility states
 - Candidate profiles and deterministic skill ontology
 - Explainable candidate/job matching and ranking
@@ -114,7 +114,7 @@ Live upstream services can change, so CI also validates the configured source ca
 It:
 
 1. migrates the persistent database,
-2. reads the audited `config/sources.json` catalog,
+2. bootstraps the generated verified source registry and audited manual seeds,
 3. re-fetches current ATS vacancies,
 4. upserts jobs deterministically,
 5. deactivates jobs that disappeared from a successfully refreshed source,
@@ -129,9 +129,16 @@ The Windows desktop runtime has its own local refresh cycle: first launch fetche
 
 Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
 
-## Current production source catalog
+## Source coverage and refresh
 
-The tracked v1 catalog currently includes live-verified public feeds for:
+`config/sources.json` is the small, auditable manual seed set. The v1.1 release
+desktop catalog is `config/source-registry.snapshot.json`, generated only from
+this project's persisted live-verified registry. Release packaging validates its shape,
+health evidence, and minimum verified-board count before the Windows binaries
+are built. The snapshot is retained across restarts; discovery refreshes happen
+outside normal desktop startup.
+
+The manual seeds currently include public feeds for:
 
 - N26
 - HelloFresh
@@ -144,7 +151,10 @@ The tracked v1 catalog currently includes live-verified public feeds for:
 - PRISMA European Capacity Platform
 - Clera
 
-The catalog is deliberately explicit and auditable rather than an unrestricted crawler. Coverage can grow safely by adding verified ATS sources.
+Provider pages and archived/index URLs are candidates, never coverage claims. A
+board enters the snapshot only after its current provider endpoint (or a
+documented provider fallback) succeeds. Coverage metrics always describe the
+monitored catalog, not all European vacancies.
 
 ## Architecture
 
@@ -224,10 +234,12 @@ The production compose file intentionally has no default database password.
 
 ## Run real job ingestion
 
-`config/sources.json` already contains the live-verified v1 source catalog.
+The manual seeds are in `config/sources.json`; production registry operations
+use the persisted verified registry.
 
 ```bash
-evj-ingest jobs --sources config/sources.json
+evj-ingest sources bootstrap --config config/sources.json --snapshot config/source-registry.snapshot.json
+evj-ingest jobs --registry
 ```
 
 To maintain a custom deployment, edit that catalog or start from `config/sources.example.json` and validate the ATS slugs before relying on them.

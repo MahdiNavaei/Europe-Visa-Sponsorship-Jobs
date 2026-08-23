@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from europe_visa_jobs.db.models import Candidate, Job
@@ -8,6 +9,7 @@ from europe_visa_jobs.intelligence.job_profile import JobProfile, analyze_job
 from europe_visa_jobs.intelligence.ontology import SkillOntology
 from europe_visa_jobs.schemas import EligibilityStatus, JobFamily, PreferenceLevel, SeniorityLevel
 from europe_visa_jobs.utils.countries import normalize_country
+from europe_visa_jobs.utils.locations import remote_scope
 from europe_visa_jobs.utils.roles import classify_role
 
 
@@ -50,7 +52,7 @@ class CandidateMatcher:
         self.company_scorer = company_scorer or CompanyIntelligenceScorer()
 
     def match(self, candidate: Candidate, job: Job) -> MatchResult:
-        profile = analyze_job(job.title, job.description, job.job_family, ontology=self.ontology)
+        profile = analyze_job(job.title, job.description, self._effective_job_family(job), ontology=self.ontology)
         # Persisted intelligence is authoritative when available, while old Phase-1 rows remain
         # fully matchable through the deterministic analyzer.
         if job.required_skills or job.preferred_skills or job.min_experience_years is not None or job.seniority:
@@ -110,6 +112,21 @@ class CandidateMatcher:
         )
 
     @staticmethod
+    def _effective_job_family(job: Job) -> JobFamily | str:
+        """Prefer the current title classifier over stale persisted labels.
+
+        Older databases may contain a ``data_engineering`` or ``devops_cloud``
+        label produced by a broad phrase match. Explicitly non-technical titles
+        must not inherit that label during recommendation scoring.
+        """
+        classified = classify_role(job.title)
+        if classified is not JobFamily.OTHER:
+            return classified
+        if re.search(r"\b(?:product|program|programme|project) manager\b|\bservice designer\b|\b(?:sales|marketing|recruiter)\b", job.title, re.IGNORECASE):
+            return JobFamily.OTHER
+        return job.job_family
+
+    @staticmethod
     def _coverage(matched: int, total: int) -> float:
         return matched / total if total else 1.0
 
@@ -134,6 +151,14 @@ class CandidateMatcher:
         target_families = [classify_role(role) for role in target_roles]
         if family in target_families and family is not JobFamily.OTHER:
             return 1.0
+        related_families = {
+            JobFamily.AI_ML: {JobFamily.DATA_SCIENCE, JobFamily.MLOPS},
+            JobFamily.DATA_SCIENCE: {JobFamily.AI_ML, JobFamily.MLOPS},
+            JobFamily.MLOPS: {JobFamily.AI_ML, JobFamily.DATA_SCIENCE, JobFamily.DEVOPS_CLOUD},
+            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS},
+        }
+        if any(family in related_families.get(target, set()) for target in target_families):
+            return 0.75
         if any(role.casefold() in title_lower or title_lower in role.casefold() for role in target_roles):
             return 0.85
         return 0.2
@@ -142,13 +167,22 @@ class CandidateMatcher:
     def _country_match(candidate: Candidate, job: Job) -> tuple[float, list[str], list[str]]:
         country = normalize_country(job.country) if job.country else None
         location = job.location.casefold()
+        remote_geography = remote_scope(job.location)
         excluded = [value.casefold() for value in candidate.excluded_locations]
         if any(value in location or value == (country or "").casefold() for value in excluded):
             return 0.0, [], ["The job location is excluded by the candidate."]
         preferred = {normalize_country(value).casefold() for value in candidate.preferred_countries}
-        country_score = 1.0 if country and country.casefold() in preferred else (0.65 if not preferred else 0.35)
+        if remote_geography == "us_only":
+            return 0.0, [], ["The remote role is restricted to the United States/North America."]
+        if remote_geography == "europe" and not country:
+            country_score = 0.65 if not preferred else 0.75
+        else:
+            country_score = 1.0 if country and country.casefold() in preferred else (0.65 if not preferred else 0.35)
         reasons = [f"The job is in preferred country {country}."] if country and country.casefold() in preferred else []
         warnings = [] if reasons or not preferred else [f"The job country {country or 'unknown'} is not in the preferred countries."]
+        if remote_geography == "europe" and not country:
+            reasons.append("The remote role is explicitly limited to Europe/EEA markets.")
+            warnings = []
 
         workplace = (job.workplace_type or "").casefold()
         is_remote = "remote" in workplace or "remote" in location

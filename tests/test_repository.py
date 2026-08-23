@@ -1,4 +1,4 @@
-from europe_visa_jobs.db.repository import Repository
+from europe_visa_jobs.db.repository import Repository, canonicalize_apply_url
 from europe_visa_jobs.eligibility import EligibilityEngine
 from europe_visa_jobs.schemas import (
     ATSProvider,
@@ -64,3 +64,26 @@ def test_sponsor_record_normalized_lookup(db_session):
     )
     db_session.commit()
     assert repo.find_sponsor_record("Acme", "Netherlands") is not None
+
+
+def test_cross_source_duplicate_is_marked_without_collapsing_distinct_rows(db_session):
+    repo = Repository(db_session)
+    first = NormalizedJob(
+        external_id="one",
+        provider=ATSProvider.GREENHOUSE,
+        source_slug="first",
+        company_name="Acme",
+        title="Backend Engineer",
+        location="Berlin, Germany",
+        country="Germany",
+        apply_url="https://jobs.example/apply?id=1&utm_source=cc",
+    )
+    second = first.model_copy(update={"external_id": "two", "source_slug": "second", "apply_url": "https://JOBS.example/apply?id=1"})
+    assessment = EligibilityEngine().assess(first)
+    left = repo.upsert_job(first, assessment)
+    right = repo.upsert_job(second, assessment)
+    db_session.commit()
+    assert canonicalize_apply_url(first.apply_url) == "https://jobs.example/apply?id=1"
+    assert left.duplicate_of_job_id is None
+    assert right.duplicate_of_job_id == left.id
+    assert len(repo.list_jobs(status=None)) == 2

@@ -13,6 +13,32 @@ class ATSProvider(StrEnum):
     ASHBY = "ashby"
     WORKABLE = "workable"
     PERSONIO = "personio"
+    TEAMTAILOR = "teamtailor"
+    RECRUITEE = "recruitee"
+    SMARTRECRUITERS = "smartrecruiters"
+    WORKDAY = "workday"
+
+
+class SourceStatus(StrEnum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    FAILING = "failing"
+    BLOCKED = "blocked"
+    EMPTY = "empty"
+    DISABLED = "disabled"
+    UNVERIFIED = "unverified"
+
+
+class SourceValidationState(StrEnum):
+    """Durable state machine for candidate validation and retry scheduling."""
+
+    DISCOVERED = "discovered"
+    PENDING_VALIDATION = "pending_validation"
+    VERIFIED = "verified"
+    INVALID = "invalid"
+    TRANSIENT_FAILURE = "transient_failure"
+    BLOCKED = "blocked"
+    RETRY_LATER = "retry_later"
 
 
 class EligibilityStatus(StrEnum):
@@ -68,7 +94,44 @@ class SourceConfig(BaseModel):
     default_country: str | None = None
     region: str | None = None
     careers_url: str | None = None
+    board_url: str | None = None
+    api_url: str | None = None
+    discovery_method: str = "manual_seed"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    manual_override: bool = False
     enabled: bool = True
+
+    @property
+    def board_identifier(self) -> str:
+        return self.slug
+
+
+class SourceCandidate(BaseModel):
+    provider: ATSProvider
+    board_identifier: str
+    canonical_url: str
+    api_url: str | None = None
+    company_name: str | None = None
+    country_hint: str | None = None
+    discovery_method: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceValidation(BaseModel):
+    valid: bool
+    provider: ATSProvider
+    board_identifier: str
+    canonical_url: str
+    api_url: str | None = None
+    company_name: str | None = None
+    job_count: int = 0
+    http_status: int | None = None
+    error_category: str | None = None
+    error: str | None = None
+    etag: str | None = None
+    last_modified: str | None = None
+    failure_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class NormalizedJob(BaseModel):
@@ -242,6 +305,64 @@ class StatsRead(BaseModel):
     rejected_jobs: int
     unknown_jobs: int
     companies: int
+
+
+class CoverageRead(BaseModel):
+    configured_sources: int
+    discovered_sources: int
+    verified_sources: int
+    live_verified_sources: int
+    healthy_sources: int
+    degraded_sources: int
+    failing_sources: int
+    blocked_sources: int
+    empty_sources: int
+    disabled_sources: int
+    invalid_sources: int
+    retry_later_sources: int
+    transient_failure_sources: int
+    pending_sources: int
+    sources_scanned_latest_run: int
+    raw_jobs_scanned: int
+    technical_jobs: int
+    european_technical_jobs: int
+    european_ai_data_ml_jobs: int
+    active_jobs: int
+    ai_ml_jobs: int
+    eligible_jobs: int
+    unknown_jobs: int
+    rejected_jobs: int
+    last_refresh_at: datetime | None = None
+
+
+class SourceHealthRead(BaseModel):
+    id: int
+    provider: ATSProvider
+    board_identifier: str
+    company_name: str | None
+    careers_url: str | None
+    status: SourceStatus
+    enabled: bool
+    manual_override: bool
+    last_health_check_at: datetime | None
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    consecutive_failures: int
+    raw_job_count: int
+    technical_job_count: int
+    active_job_count: int
+    eligible_job_count: int
+    unknown_job_count: int
+    rejected_job_count: int
+    last_http_status: int | None
+    last_error_category: str | None
+    last_error: str | None
+    validation_state: SourceValidationState
+    last_checked_at: datetime | None
+    retry_after: datetime | None
+    failure_type: str | None
+    validation_attempts: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RecommendationScoresRead(BaseModel):

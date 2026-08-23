@@ -8,7 +8,7 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country
 
 class GreenhouseConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
-        url = f"https://boards-api.greenhouse.io/v1/boards/{self.source.slug}/jobs"
+        url = self.endpoint(f"https://boards-api.greenhouse.io/v1/boards/{self.source.slug}/jobs")
         response = await self._get(url, params={"content": "true"})
         try:
             payload = response.json()

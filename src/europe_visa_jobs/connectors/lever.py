@@ -9,7 +9,7 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country, n
 class LeverConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
         host = "api.eu.lever.co" if (self.source.region or "").casefold() == "eu" else "api.lever.co"
-        url = f"https://{host}/v0/postings/{self.source.slug}"
+        url = self.endpoint(f"https://{host}/v0/postings/{self.source.slug}")
         response = await self._get(url, params={"mode": "json"})
         try:
             rows = response.json()
