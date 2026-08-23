@@ -10,6 +10,7 @@ import httpx
 from europe_visa_jobs.discovery.http import fetch_public
 from europe_visa_jobs.discovery.patterns import identify_source_url, plausible_identifier
 from europe_visa_jobs.schemas import ATSProvider, SourceCandidate
+from europe_visa_jobs.settings import get_settings
 
 INDEX_DOMAINS: dict[ATSProvider, tuple[str, ...]] = {
     ATSProvider.GREENHOUSE: ("boards.greenhouse.io", "job-boards.greenhouse.io"),
@@ -140,8 +141,10 @@ async def urlscan_candidates(
     provider: ATSProvider,
     stats: dict[str, int] | None = None,
     max_pages: int = 10,
+    errors: list[str] | None = None,
 ) -> list[SourceCandidate]:
     discovered: dict[tuple[str, str], SourceCandidate] = {}
+    settings = get_settings()
     for domain in INDEX_DOMAINS.get(provider, ()):
         cursor: str | None = None
         for page_number in range(max(1, max_pages)):
@@ -151,9 +154,19 @@ async def urlscan_candidates(
             if cursor:
                 url += f"&search_after={quote(cursor)}"
             try:
-                response = await fetch_public(client, url, retries=2, timeout=60)
+                # Do not let an unavailable public index consume the entire
+                # discovery batch before any candidate can be checkpointed.
+                # The next scheduled run can resume from the persisted registry.
+                response = await fetch_public(
+                    client,
+                    url,
+                    retries=settings.discovery_index_retry_attempts,
+                    timeout=settings.discovery_index_timeout_seconds,
+                )
                 payload = json.loads(response.body.decode("utf-8"))
-            except Exception:
+            except Exception as exc:
+                if errors is not None:
+                    errors.append(f"urlscan:{provider.value}:{domain}: {str(exc)[:300]}")
                 break
             results = payload.get("results", []) if isinstance(payload, dict) else []
             for row in results:

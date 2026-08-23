@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     discovery_retry_attempts: int = 3
     discovery_concurrency: int = 8
     discovery_index_concurrency: int = 2
+    # Public archive/index services are helpful discovery inputs, but they must
+    # never hold an entire discovery run hostage. Provider validation has its
+    # own timeout/retry policy below; these limits apply only to index pages.
+    discovery_index_timeout_seconds: float = 15.0
+    discovery_index_retry_attempts: int = 1
     discovery_common_crawl_max_pages: int = 20
     discovery_urlscan_max_pages: int = 10
     discovery_checkpoint_size: int = 100

@@ -47,8 +47,10 @@ def test_registry_health_transitions_and_coverage(db_session):
     db_session.commit()
     coverage = registry.coverage()
     assert coverage["verified_sources"] == 1
+    assert coverage["live_verified_sources"] == 1
     assert coverage["active_jobs"] == 0  # no Job rows were fabricated by registry accounting
     assert coverage["raw_jobs_scanned"] == 2
+    assert coverage["european_ai_data_ml_jobs"] == 0
 
 
 def test_registry_filters_and_cache_round_trip(db_session):
@@ -58,7 +60,6 @@ def test_registry_filters_and_cache_round_trip(db_session):
         company_name="Acme",
         slug="acme",
         careers_url="https://boards.greenhouse.io/acme",
-        metadata={"cache": {"etag": "v1"}},
         enabled=True,
         manual_override=True,
     )
@@ -72,6 +73,7 @@ def test_registry_filters_and_cache_round_trip(db_session):
             canonical_url=config.careers_url,
             job_count=0,
             http_status=200,
+            etag="v1",
         ),
     )
     db_session.commit()
@@ -79,7 +81,19 @@ def test_registry_filters_and_cache_round_trip(db_session):
     assert registry.list_sources(enabled_only=True, verified_only=True, statuses={SourceStatus.EMPTY.value}, limit=1) == [source]
     restored = registry.to_config(source)
     assert restored.enabled and restored.manual_override
-    assert restored.metadata["cache"]["etag"] == "v1"
+    # A discovery probe must not conditionally fetch the first persisted job
+    # payload, otherwise a 304 can falsely look like an ingestion.
+    assert "cache" not in restored.metadata
+    registry.record_ingestion_counts(
+        source,
+        raw_jobs=0,
+        technical_jobs=0,
+        active_jobs=0,
+        eligible_jobs=0,
+        unknown_jobs=0,
+        rejected_jobs=0,
+    )
+    assert registry.to_config(source).metadata["cache"]["etag"] == "v1"
 
 
 def test_registry_blocks_repeated_failures_and_recovers(db_session):
@@ -186,3 +200,69 @@ def test_import_config_canonicalizes_provider_case_and_endpoint(db_session):
     assert source.board_identifier == "acme"
     assert source.api_url == "https://api.ashbyhq.com/posting-api/job-board/acme"
     assert registry.get(ATSProvider.ASHBY, "acme") is source
+
+
+def test_import_config_honors_manual_override_flag(db_session):
+    registry = SourceRegistry(db_session)
+    source = registry.import_config(
+        SourceConfig(provider=ATSProvider.GREENHOUSE, company_name="Snapshot board", slug="snapshot-board")
+    )
+    assert source.manual_override is False
+
+
+def test_uningested_verified_sources_are_resumable(db_session):
+    registry = SourceRegistry(db_session)
+    source = registry.upsert_candidate(
+        SourceCandidate(
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="resume-me",
+            canonical_url="https://boards.greenhouse.io/resume-me",
+            api_url="https://boards-api.greenhouse.io/v1/boards/resume-me/jobs",
+            discovery_method="test",
+        ),
+        enabled=True,
+    )
+    registry.record_validation(
+        source,
+        SourceValidation(
+            valid=True,
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="resume-me",
+            canonical_url="https://boards.greenhouse.io/resume-me",
+            http_status=200,
+        ),
+    )
+    assert registry.un_ingested_verified_sources() == [source]
+    assert registry.un_ingested_verified_sources(providers={"personio"}) == []
+    assert registry.un_ingested_verified_sources(providers={"greenhouse"}) == [source]
+    registry.record_ingestion_counts(source, raw_jobs=1, technical_jobs=1, active_jobs=1, eligible_jobs=0, unknown_jobs=1, rejected_jobs=0)
+    assert registry.un_ingested_verified_sources() == []
+
+
+def test_uningested_sources_can_prioritize_observed_job_volume(db_session):
+    registry = SourceRegistry(db_session)
+    sources = []
+    for identifier, jobs in (("small", 2), ("large", 20)):
+        source = registry.upsert_candidate(
+            SourceCandidate(
+                provider=ATSProvider.GREENHOUSE,
+                board_identifier=identifier,
+                canonical_url=f"https://boards.greenhouse.io/{identifier}",
+                api_url=f"https://boards-api.greenhouse.io/v1/boards/{identifier}/jobs",
+                discovery_method="test",
+            ),
+            enabled=True,
+        )
+        registry.record_validation(
+            source,
+            SourceValidation(
+                valid=True,
+                provider=ATSProvider.GREENHOUSE,
+                board_identifier=identifier,
+                canonical_url=source.careers_url or "",
+                job_count=jobs,
+                http_status=200,
+            ),
+        )
+        sources.append(source)
+    assert registry.un_ingested_verified_sources(largest_first=True) == [sources[1], sources[0]]

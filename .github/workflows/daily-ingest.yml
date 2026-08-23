@@ -55,6 +55,9 @@ jobs:
       - name: Migrate database
         run: alembic upgrade head
 
+      - name: Load official sponsor evidence before eligibility ingestion
+        run: evj-ingest sponsors --production --file data/sponsors.csv
+
       - name: Bootstrap and validate priority seeds
         run: |
           evj-ingest sources bootstrap --config config/sources.json

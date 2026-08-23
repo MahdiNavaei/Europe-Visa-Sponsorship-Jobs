@@ -420,6 +420,34 @@ class Repository:
             for item in records
         ]
 
+    def sponsor_evidence_for_jobs(self, jobs: list[NormalizedJob]) -> list[CompanySponsorEvidence]:
+        """Read only evidence that can apply to the current source snapshot.
+
+        A national sponsor register can contain hundreds of thousands of rows.
+        Loading every row before every desktop refresh wastes memory and delays
+        first results. Company/country lookup is indexed and preserves the same
+        exact matching semantics as :meth:`sponsor_evidence`.
+        """
+        names = {normalize_company_name(job.company_name) for job in jobs if job.company_name}
+        countries = {job.country for job in jobs if job.country}
+        if not names or not countries:
+            return []
+        records = self.session.scalars(
+            select(SponsorRecord).where(
+                SponsorRecord.normalized_name.in_(names),
+                SponsorRecord.country.in_(countries),
+            )
+        ).all()
+        return [
+            CompanySponsorEvidence(
+                company_name=item.company_name,
+                country=item.country,
+                registry_name=item.registry_name,
+                source_url=item.source_url,
+            )
+            for item in records
+        ]
+
     def stats(self) -> dict[str, int]:
         def count_jobs(status: EligibilityStatus | None = None) -> int:
             stmt = select(func.count(Job.id)).where(Job.active.is_(True))

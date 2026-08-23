@@ -13,6 +13,7 @@ from europe_visa_jobs.connectors.smartrecruiters import SmartRecruitersConnector
 from europe_visa_jobs.connectors.teamtailor import TeamtailorConnector
 from europe_visa_jobs.connectors.workday import WorkdayConnector
 from europe_visa_jobs.db.models import Candidate, Job
+from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.discovery import methods
 from europe_visa_jobs.discovery.http import PublicFetchError, PublicResponse, fetch_public
 from europe_visa_jobs.discovery.orchestrator import discover_and_validate
@@ -197,6 +198,15 @@ async def test_index_methods_and_orchestrator_are_additive(monkeypatch, db_sessi
         with pytest.raises(ValueError, match="no collection index"):
             await methods.common_crawl_index(client)
 
+    async def failing_urlscan(*args, **kwargs):
+        raise RuntimeError("rate limited")
+
+    monkeypatch.setattr(methods, "fetch_public", failing_urlscan)
+    errors: list[str] = []
+    async with httpx.AsyncClient() as client:
+        assert await methods.urlscan_candidates(client, ATSProvider.WORKABLE, errors=errors) == []
+    assert errors and "rate limited" in errors[0]
+
     async def fake_validate(client, candidate):
         return SourceValidation(valid=True, provider=candidate.provider, board_identifier=candidate.board_identifier, canonical_url=candidate.canonical_url, job_count=2, http_status=200)
 
@@ -271,6 +281,48 @@ def test_source_cli_exposes_bounded_batch_and_force_options():
     assert args.batch_size == 17 and args.force and args.provider == ["lever"]
 
 
+def test_jobs_cli_can_target_provider_for_bounded_ingestion():
+    args = ingestion_cli._parser().parse_args(
+        ["jobs", "--registry", "--only-uningested", "--provider", "personio", "--limit", "20"]
+    )
+    assert args.provider == ["personio"] and args.only_uningested
+
+
+@pytest.mark.asyncio
+async def test_bounded_discovery_does_not_mark_unselected_verified_sources_pending(monkeypatch, db_session):
+    configs = [
+        SourceConfig(provider="greenhouse", company_name=name, slug=name)
+        for name in ("alpha", "beta")
+    ]
+
+    async def fake_validate(client, candidate, *, probe_only=True):
+        del client, probe_only
+        return SourceValidation(
+            valid=True,
+            provider=candidate.provider,
+            board_identifier=candidate.board_identifier,
+            canonical_url=candidate.canonical_url,
+            job_count=1,
+            http_status=200,
+        )
+
+    monkeypatch.setattr("europe_visa_jobs.discovery.orchestrator.load_sources", lambda path: configs)
+    monkeypatch.setattr("europe_visa_jobs.discovery.orchestrator.validate_candidate", fake_validate)
+    monkeypatch.setattr(
+        "europe_visa_jobs.discovery.orchestrator.get_settings",
+        lambda: type("Settings", (), {"discovery_timeout_seconds": 2, "discovery_concurrency": 1, "discovery_common_crawl_max_pages": 1, "discovery_checkpoint_size": 1})(),
+    )
+    await discover_and_validate(db_session, providers={ATSProvider.GREENHOUSE}, methods={"manual"}, limit=2)
+    await discover_and_validate(
+        db_session,
+        providers={ATSProvider.GREENHOUSE},
+        methods={"manual"},
+        limit=1,
+        force=True,
+    )
+    assert SourceRegistry(db_session).get("greenhouse", "beta").validation_state == "verified"
+
+
 @pytest.mark.asyncio
 async def test_retry_failed_cli_path(monkeypatch):
     class Settings:
@@ -292,7 +344,7 @@ async def test_retry_failed_cli_path(monkeypatch):
         def __exit__(self, *args):
             return False
 
-    async def fake_ingest(session, source, *, client):
+    async def fake_ingest(session, source, *, client, sponsor_registry=None):
         return type("Run", (), {"fetched_count": 1, "stored_count": 1, "status": "success"})()
 
     monkeypatch.setattr(ingestion_cli, "get_settings", lambda: Settings())

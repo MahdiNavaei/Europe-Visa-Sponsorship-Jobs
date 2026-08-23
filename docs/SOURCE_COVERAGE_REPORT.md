@@ -144,3 +144,25 @@ Python 3.11/3.12, frontend/browser, PostgreSQL integration, live ingestion E2E,
 security, Lighthouse, Docker/acceptance, and Windows packaging. The release
 publish job was skipped. No release tag or published release was retargeted or
 published during this Prompt 1 work.
+
+## v1.1 launch-registry evidence — 2026-08-23
+
+The v1.1 launch registry was rebuilt separately from the historical control
+above. Candidate slugs came from the MIT-licensed Freehire source catalog and
+were stored only as unverified inputs with their catalog provenance. Career
+Radar then queried each candidate's own public ATS endpoint; only a current
+successful validation can enter the release snapshot.
+
+| Metric | Observed value |
+| --- | ---: |
+| Current live-verified, enabled boards | 653 |
+| Greenhouse live-verified boards | 460 |
+| Source snapshot validation threshold | 500 |
+| Snapshot result | pass (653 boards) |
+| European technical jobs after resumable ingestion | 654 / 1,000 required |
+| European AI/data/ML jobs after resumable ingestion | 118 / 100 required |
+
+This passes the source-breadth gate, but it is not a release declaration.
+The AI/data/ML usefulness gate has passed, but the European technical-role
+gate remains short by 346 roles. The Windows package, remote merge, CI, tag,
+and published release remain gated on that completion.

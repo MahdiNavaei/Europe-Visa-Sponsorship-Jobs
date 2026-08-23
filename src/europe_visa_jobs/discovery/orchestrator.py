@@ -39,6 +39,7 @@ async def discover_and_validate(
     limit: int | None = None,
     batch_size: int | None = None,
     force: bool = False,
+    probe_only: bool = True,
     seed_path: str = "config/sources.json",
 ) -> dict[str, object]:
     """Discover candidates, apply quality filters, and validate one durable batch.
@@ -126,6 +127,7 @@ async def discover_and_validate(
                         provider,
                         stats=metric,
                         max_pages=getattr(settings, "discovery_urlscan_max_pages", 10),
+                        errors=index_errors,
                     )
                     candidates.update({(item.provider.value, item.board_identifier): item for item in items})
             except Exception as exc:
@@ -178,12 +180,16 @@ async def discover_and_validate(
                 "invalid": 3,
                 "blocked": 3,
             }.get(source.validation_state, 2)
-            registry.mark_pending(source)
             pending.append((priority, item, source))
 
         pending.sort(key=lambda value: (value[0], value[1].provider.value, value[1].board_identifier))
         max_batch = int(batch_size or limit or getattr(settings, "discovery_batch_size", 250))  # type: ignore[arg-type]
         selected_batch = pending[:max(1, max_batch)]
+        # Only work actually selected for this run may transition to pending.
+        # Marking the whole candidate universe first makes an interrupted or
+        # bounded run erase the current verified state of unselected boards.
+        for _, _, source in selected_batch:
+            registry.mark_pending(source)
         run.candidate_count = len(selected_batch)
         session.commit()
 
@@ -205,7 +211,7 @@ async def discover_and_validate(
                 identified.metadata.update(item.metadata)
                 try:
                     try:
-                        result = await validate_candidate(client, identified, probe_only=True)
+                        result = await validate_candidate(client, identified, probe_only=probe_only)
                     except TypeError as exc:
                         # Keep small test doubles and downstream integrations that
                         # still expose the pre-probe callable compatible.

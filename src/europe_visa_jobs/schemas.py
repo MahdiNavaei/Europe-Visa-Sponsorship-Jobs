@@ -311,6 +311,7 @@ class CoverageRead(BaseModel):
     configured_sources: int
     discovered_sources: int
     verified_sources: int
+    live_verified_sources: int
     healthy_sources: int
     degraded_sources: int
     failing_sources: int
@@ -325,6 +326,7 @@ class CoverageRead(BaseModel):
     raw_jobs_scanned: int
     technical_jobs: int
     european_technical_jobs: int
+    european_ai_data_ml_jobs: int
     active_jobs: int
     ai_ml_jobs: int
     eligible_jobs: int

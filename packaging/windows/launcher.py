@@ -69,6 +69,8 @@ def migrate_database() -> None:
     from alembic import command
     from alembic.config import Config
 
+    from europe_visa_jobs.db.locking import database_write_lock
+
     config_path = bundle_dir() / "alembic.ini"
     migrations_path = bundle_dir() / "migrations"
     if not config_path.is_file():
@@ -78,7 +80,8 @@ def migrate_database() -> None:
     config = Config(str(config_path))
     config.set_main_option("script_location", str(migrations_path).replace("%", "%%"))
     config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
-    command.upgrade(config, "head")
+    with database_write_lock(os.environ["DATABASE_URL"]):
+        command.upgrade(config, "head")
 
 
 def http_ok(url: str, timeout: float = 1.5) -> bool:
@@ -144,23 +147,34 @@ def mark_refreshed(data_dir: Path) -> None:
 
 
 def refresh_jobs(data_dir: Path) -> None:
+    from europe_visa_jobs.db.locking import database_write_lock
     from europe_visa_jobs.db.session import SessionLocal
     from europe_visa_jobs.db.source_registry import SourceRegistry
     from europe_visa_jobs.ingestion.cli import _ingest
     from europe_visa_jobs.ingestion.sources import load_sources
+    from europe_visa_jobs.ingestion.sponsors import import_production_sponsor_evidence
 
     sources = bundle_dir() / "config" / "sources.json"
+    snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
+    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv"
     # The packaged catalog is a safe first-run seed. Once a source has been
     # validated, refreshes use the persistent registry and never regenerate a
     # web-scale discovery pass during desktop startup.
-    with SessionLocal() as session:
-        registry = SourceRegistry(session)
-        if not registry.list_sources():
-            for config in load_sources(sources):
-                registry.import_config(config)
-            session.commit()
-        has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
-    asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
+    with database_write_lock(os.environ["DATABASE_URL"]):
+        with SessionLocal() as session:
+            registry = SourceRegistry(session)
+            import_production_sponsor_evidence(session, sponsor_evidence)
+            if not registry.list_sources():
+                # A release package must include this generated artifact.  It is
+                # validated for 500+ live boards before import, so first launch is
+                # useful without starting a web-scale crawl.
+                for config in load_sources(snapshot, minimum_snapshot_sources=500):
+                    registry.import_verified_snapshot(config)
+                for config in load_sources(sources):
+                    registry.import_config(config.model_copy(update={"manual_override": True}))
+                session.commit()
+            has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
+        asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
     mark_refreshed(data_dir)
 
 
@@ -323,7 +337,9 @@ def smoke_test(data_dir: Path) -> int:
             bundle_dir() / "migrations",
             bundle_dir() / "config" / "ranking.yaml",
             bundle_dir() / "config" / "sources.json",
+            bundle_dir() / "config" / "source-registry.snapshot.json",
             bundle_dir() / "data" / "skills.yaml",
+            bundle_dir() / "data" / "sponsors.csv",
         )
         missing_resources = [str(path) for path in required_resources if not path.exists()]
         if missing_resources:

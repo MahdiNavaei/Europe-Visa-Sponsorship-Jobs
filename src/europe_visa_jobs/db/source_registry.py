@@ -134,7 +134,7 @@ class SourceRegistry:
             discovery_method=config.discovery_method,
             metadata=config.metadata,
         )
-        source = self.upsert_candidate(candidate, enabled=config.enabled, manual_override=config.manual_override or True)
+        source = self.upsert_candidate(candidate, enabled=config.enabled, manual_override=config.manual_override)
         source.company_name = config.company_name
         source.normalized_company_name = normalize_company_name(config.company_name)
         source.careers_url = config.careers_url or source.careers_url
@@ -143,6 +143,44 @@ class SourceRegistry:
         source.country_hint = normalize_country(config.default_country) if config.default_country else source.country_hint
         if source.status == SourceStatus.UNVERIFIED.value:
             source.status = SourceStatus.UNVERIFIED.value
+        self.session.flush()
+        return source
+
+    def import_verified_snapshot(self, config: SourceConfig) -> Source:
+        """Bootstrap one source from a validated, packaged registry snapshot.
+
+        Snapshot validation happens before this method is called.  We preserve
+        the observed source-health values so first launch can ingest the known
+        boards immediately rather than treating hundreds of them as unverified
+        and falling back to the legacy fifteen-source catalog.
+        """
+        health = config.metadata.get("snapshot_health")
+        if not isinstance(health, dict) or health.get("validation_state") != "verified":
+            raise ValueError("snapshot source is missing verified health evidence")
+
+        def parse_timestamp(value: object) -> datetime | None:
+            if not isinstance(value, str):
+                return None
+            parsed = datetime.fromisoformat(value)
+            return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+
+        source = self.import_config(config)
+        last_success = parse_timestamp(health.get("last_success_at"))
+        if last_success is None:
+            raise ValueError("snapshot source is missing last_success_at")
+        source.validation_state = SourceValidationState.VERIFIED.value
+        source.status = str(health.get("health_state") or SourceStatus.HEALTHY.value)
+        source.verified_at = source.verified_at or last_success
+        source.last_checked_at = parse_timestamp(health.get("last_checked_at")) or last_success
+        source.last_health_check_at = source.last_checked_at
+        source.last_success_at = last_success
+        source.last_failure_at = parse_timestamp(health.get("last_failure_at"))
+        source.retry_after = parse_timestamp(health.get("retry_after"))
+        source.last_error_category = health.get("failure_category") if isinstance(health.get("failure_category"), str) else None
+        source.failure_type = source.last_error_category
+        source.last_http_status = health.get("http_status") if isinstance(health.get("http_status"), int) else None
+        source.raw_job_count = max(0, int(health.get("jobs_observed") or 0))
+        source.enabled = True
         self.session.flush()
         return source
 
@@ -166,7 +204,16 @@ class SourceRegistry:
 
     def to_config(self, source: Source) -> SourceConfig:
         metadata = {**(source.source_metadata or {})}
-        cache = {key: value for key, value in {"etag": source.etag, "last_modified": source.last_modified}.items() if value}
+        # Discovery may have observed a validator while probing a board, but it
+        # has not persisted the board's jobs.  Do not send that validator on a
+        # source's first ingestion: a 304 would leave the source permanently
+        # "un-ingested" without ever storing its current job set.
+        cache = (
+            {key: value for key, value in {"etag": source.etag, "last_modified": source.last_modified}.items() if value}
+            if source.last_ingested_at is not None
+            else {}
+        )
+        metadata.pop("cache", None)
         if cache:
             metadata["cache"] = cache
         return SourceConfig(
@@ -268,6 +315,40 @@ class SourceRegistry:
     def failed_sources(self, *, limit: int | None = None) -> list[Source]:
         return self.list_sources(statuses={SourceStatus.DEGRADED.value, SourceStatus.FAILING.value, SourceStatus.BLOCKED.value}, limit=limit)
 
+    def un_ingested_verified_sources(
+        self,
+        *,
+        providers: set[str] | None = None,
+        limit: int | None = None,
+        largest_first: bool = False,
+    ) -> list[Source]:
+        """Return verified boards with no successful persisted ingestion yet."""
+        now = datetime.now(UTC)
+        stmt = (
+            select(Source)
+            .where(
+                Source.enabled.is_(True),
+                Source.verified_at.is_not(None),
+                Source.last_ingested_at.is_(None),
+                or_(
+                    Source.status.not_in(
+                        [SourceStatus.DEGRADED.value, SourceStatus.FAILING.value, SourceStatus.BLOCKED.value]
+                    ),
+                    Source.retry_after.is_(None),
+                    Source.retry_after <= now,
+                ),
+            )
+        )
+        if largest_first:
+            stmt = stmt.order_by(Source.raw_job_count.desc(), Source.provider, Source.board_identifier)
+        else:
+            stmt = stmt.order_by(Source.provider, Source.board_identifier)
+        if providers:
+            stmt = stmt.where(Source.provider.in_(providers))
+        if limit:
+            stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt))
+
     def coverage(self) -> dict[str, int | datetime | None]:
         sources = self.list_sources()
         status_counts = Counter(source.status for source in sources)
@@ -275,6 +356,13 @@ class SourceRegistry:
             select(DiscoveryRun).where(DiscoveryRun.finished_at.is_not(None)).order_by(DiscoveryRun.finished_at.desc()).limit(1)
         )
         jobs = select(Job).where(Job.active.is_(True))
+        european_scope = or_(
+            Job.country.in_(EUROPEAN_COUNTRIES),
+            Job.location.ilike("%remote%eu%"),
+            Job.location.ilike("%remote%europe%"),
+            Job.location.ilike("%remote%emea%"),
+        )
+        ai_data_ml_scope = Job.job_family.in_(["ai_ml", "data_engineering", "data_science", "mlops"])
         counts = {
             "active_jobs": self.session.scalar(select(func.count()).select_from(jobs.subquery())) or 0,
             "technical_jobs": self.session.scalar(select(func.count()).select_from(jobs.where(Job.job_family != "other").subquery())) or 0,
@@ -286,14 +374,12 @@ class SourceRegistry:
                 select(func.count()).select_from(
                     jobs.where(
                         Job.job_family != "other",
-                        or_(
-                            Job.country.in_(EUROPEAN_COUNTRIES),
-                            Job.location.ilike("%remote%eu%"),
-                            Job.location.ilike("%remote%europe%"),
-                            Job.location.ilike("%remote%emea%"),
-                        ),
+                        european_scope,
                     ).subquery()
                 )
+            ) or 0,
+            "european_ai_data_ml_jobs": self.session.scalar(
+                select(func.count()).select_from(jobs.where(ai_data_ml_scope, european_scope).subquery())
             ) or 0,
         }
         sources_scanned = 0
@@ -309,6 +395,12 @@ class SourceRegistry:
             "configured_sources": sum(bool(source.manual_override) for source in sources),
             "discovered_sources": len(sources),
             "verified_sources": sum(source.verified_at is not None for source in sources),
+            "live_verified_sources": sum(
+                source.enabled
+                and source.validation_state == SourceValidationState.VERIFIED.value
+                and source.last_success_at is not None
+                for source in sources
+            ),
             "healthy_sources": status_counts[SourceStatus.HEALTHY.value],
             "degraded_sources": status_counts[SourceStatus.DEGRADED.value],
             "failing_sources": status_counts[SourceStatus.FAILING.value],

@@ -2,6 +2,23 @@
 
 The source catalog is a database registry, not a checked-in list. `config/sources.json` is a bootstrap input and remains useful for explicit manual overrides; discovered boards are persisted in `sources`, with every validation recorded in `source_health_events` and every index pass recorded in `discovery_runs`.
 
+## Licensed candidate catalogs
+
+`scripts/build_freehire_candidate_catalog.py` may convert the MIT-licensed
+[Freehire](https://github.com/strelov1/freehire) source catalog into a local,
+unverified discovery input. It records the catalog URL and license in each
+candidate's metadata. The catalog is never copied into a release artifact and
+does not constitute source verification: each board must pass Career Radar's
+own current public-ATS validation before it is enabled, ingested, or included
+in a source-registry snapshot.
+
+For a European usefulness catch-up, the same converter can accept current city
+board files from the CC BY 4.0 [Lynceus jobs repository](https://github.com/trylynceus/jobs)
+via `--location-board`. That input is only a geographic prioritization hint;
+the candidate still needs a Freehire board identifier and an independent live
+ATS validation. Its URL and license are recorded in source metadata whenever
+the hint is used.
+
 ## Discovery contract
 
 `evj-ingest sources discover` performs an additive union of:
@@ -22,6 +39,13 @@ Recruitee, SmartRecruiters, and Workday. Provider-scoped runs remain available
 for bounded tests and operational recovery.
 
 Archive and index URLs are candidates only. A candidate becomes enabled only after its provider-specific public response is validated. The database key is `(provider, board_identifier)`, so an archived job URL cannot create duplicate boards. A failed refresh never closes or deletes jobs: active jobs are closed only after a successful provider snapshot, while conditional 304 responses preserve the prior snapshot. Cheap `HEAD` probes are used where providers support them; Workable and Ashby use provider-specific GET/hosted-page fallbacks when their public edges reject `HEAD` or the API edge.
+
+Use `evj-ingest sources discover --full-content` (or the matching
+`sources validate` flag) for a deliberate volume-measurement pass. It fetches
+the public payload rather than the normal cheap probe, persists the observed
+job count, and makes `jobs --registry --only-uningested --largest-first`
+meaningful for a bounded launch catch-up. It is opt-in because it is more
+expensive for source providers.
 
 Common Crawl page results are retained when a later page token fails, and Wayback/index latency is recorded separately from source health. In the 2026-08-23 control, paginated urlscan returned 1,100 Greenhouse records and 117 unique candidates, 157 Lever records and 84 unique candidates, and 100 Ashby records and 66 unique candidates. Wayback and Common Crawl were unavailable at the connection layer in the local network; these index failures are explicit run errors, not source failures.
 

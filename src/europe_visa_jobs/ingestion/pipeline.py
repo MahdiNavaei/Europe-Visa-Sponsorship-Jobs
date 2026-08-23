@@ -20,6 +20,7 @@ async def ingest_source(
     source: SourceConfig,
     *,
     client: httpx.AsyncClient,
+    sponsor_registry: SponsorRegistryStore | None = None,
 ) -> IngestionRun:
     run = IngestionRun(provider=source.provider.value, source_slug=source.slug)
     session.add(run)
@@ -58,16 +59,14 @@ async def ingest_source(
             return run
         run.fetched_count = len(fetched)
 
-        sponsor_store = SponsorRegistryStore(repo.sponsor_evidence())
+        technical_jobs = [job for job in fetched if is_supported_tech_role(job.title)]
+        sponsor_store = sponsor_registry or SponsorRegistryStore(repo.sponsor_evidence_for_jobs(technical_jobs))
         engine = EligibilityEngine(sponsor_registry=sponsor_store)
         seen_ids: set[str] = set()
         stored = 0
         statuses: dict[str, int] = {"eligible": 0, "unknown": 0, "rejected": 0}
 
-        for job in fetched:
-            # Phase 1 intentionally limits the catalog to target technical job families.
-            if not is_supported_tech_role(job.title):
-                continue
+        for job in technical_jobs:
             seen_ids.add(job.external_id)
             assessment = engine.assess(job)
             repo.upsert_job(job, assessment, career_url=source.careers_url)

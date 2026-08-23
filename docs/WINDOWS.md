@@ -5,17 +5,18 @@ The Windows release is the easiest way to run Career Radar locally. It is self-c
 ## Install
 
 1. Open the GitHub **Releases** page.
-2. Download `CareerRadar-Setup-v1.0.0.exe`.
+2. Download the setup file matching the release version (for example, `CareerRadar-Setup-v1.1.0.exe`).
 3. Run the installer.
 4. Launch **Career Radar** from the Start menu (or create the optional desktop shortcut).
 
-On first launch Career Radar:
+On first launch, the v1.1 release package will:
 
 - creates a local SQLite database,
 - applies the database migrations,
 - starts the bundled FastAPI backend,
 - starts the bundled production Next.js application with its bundled Node runtime,
-- fetches the audited public ATS feeds,
+- bootstraps the generated live-verified source registry and official sponsor-evidence cache,
+- fetches the monitored public ATS feeds,
 - opens the application in the default browser.
 
 No development tools are required.
@@ -50,7 +51,9 @@ The installer contains:
 - Alembic migrations,
 - the ranking configuration,
 - the skill ontology,
-- the audited ATS source catalog.
+- the audited manual ATS source catalog,
+- the generated verified source-registry snapshot, and
+- official UKVI/IND sponsor-evidence records.
 
 The local runtime binds only to loopback (`127.0.0.1`) on dedicated high ports; it is not exposed to the LAN by default.
 
@@ -63,7 +66,7 @@ network call.
 
 ## Portable package
 
-The v1.0.0 release contains `CareerRadar-Portable-v1.0.0.zip` alongside the
+Each release contains a versioned portable archive (for example, `CareerRadar-Portable-v1.1.0.zip`) alongside the
 installer when its clean smoke test passes. Extract it and run `CareerRadar.exe`;
 it has the same dependency-free runtime as the installer.
 
