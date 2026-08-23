@@ -91,3 +91,38 @@ def test_api_cors_is_explicit_and_exposes_pagination_header():
 
     denied = client.get("/health", headers={"Origin": "https://attacker.example"})
     assert "access-control-allow-origin" not in denied.headers
+
+
+def test_company_metrics_use_full_active_catalog_not_first_page(session_factory):
+    with session_factory() as session:
+        repo = Repository(session)
+        for index in range(101):
+            job = NormalizedJob(
+                external_id=f"aggregate-{index}",
+                provider=ATSProvider.GREENHOUSE,
+                source_slug="aggregate-board",
+                company_name="Aggregate Labs",
+                title="Backend Engineer",
+                description="Visa sponsorship and relocation support are available.",
+                location="Berlin, Germany",
+                country="Germany",
+                apply_url=f"https://example.com/apply/{index}",
+            )
+            repo.upsert_job(job, EligibilityEngine().assess(job))
+        session.commit()
+
+    def override_db():
+        with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        company = client.get("/api/v1/companies/1")
+        assert company.status_code == 200
+        payload = company.json()
+        assert payload["active_jobs"] == 101
+        assert payload["eligible_jobs"] == 101
+        assert len(payload["jobs"]) == 100
+    finally:
+        app.dependency_overrides.clear()

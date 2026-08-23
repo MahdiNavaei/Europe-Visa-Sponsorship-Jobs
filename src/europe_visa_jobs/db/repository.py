@@ -397,15 +397,24 @@ class Repository:
     def get_company(self, company_id: int) -> Company | None:
         return self.session.get(Company, company_id)
 
-    def list_company_jobs(self, company_id: int, *, limit: int = 100) -> list[Job]:
+    def list_company_jobs(self, company_id: int, *, limit: int | None = 100, offset: int = 0) -> list[Job]:
         stmt = (
             select(Job)
             .options(joinedload(Job.company), joinedload(Job.evidence))
             .where(Job.company_id == company_id, Job.active.is_(True))
             .order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
-            .limit(limit)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset:
+            stmt = stmt.offset(offset)
         return list(self.session.scalars(stmt).unique())
+
+    def count_company_jobs(self, company_id: int, *, eligibility_status: EligibilityStatus | None = None) -> int:
+        stmt = select(func.count(Job.id)).where(Job.company_id == company_id, Job.active.is_(True))
+        if eligibility_status is not None:
+            stmt = stmt.where(Job.eligibility_status == eligibility_status.value)
+        return int(self.session.scalar(stmt) or 0)
 
     def add_sponsor_record(self, record: CompanySponsorEvidence) -> SponsorRecord:
         normalized = normalize_company_name(record.company_name)

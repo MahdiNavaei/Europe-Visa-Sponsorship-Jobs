@@ -166,9 +166,13 @@ def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelli
     company = repo.get_company(company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
-    jobs = repo.list_company_jobs(company_id, limit=100)
+    # Metrics must describe the complete active company catalog, not the first
+    # page returned to the browser. Keep the response bounded while aggregating
+    # over every active job for truthful counts and signals.
+    all_jobs = repo.list_company_jobs(company_id, limit=None)
+    jobs = all_jobs[:100]
     scorer = CompanyIntelligenceScorer()
-    summaries = [scorer.score(company, job) for job in jobs]
+    summaries = [scorer.score(company, job) for job in all_jobs]
     if summaries:
         score = round(sum(item.score for item in summaries) / len(summaries), 2)
     else:
@@ -177,13 +181,13 @@ def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelli
     negative = list(dict.fromkeys(signal for item in summaries for signal in item.negative_signals))
     if company.sponsor_verified and "Recognized sponsor evidence is on file." not in positive:
         positive.insert(0, "Recognized sponsor evidence is on file.")
-    eligible_jobs = sum(job.eligibility_status == EligibilityStatus.ELIGIBLE.value for job in jobs)
+    eligible_jobs = repo.count_company_jobs(company_id, eligibility_status=EligibilityStatus.ELIGIBLE)
     return CompanyIntelligenceRead(
         company=CompanyRead.model_validate(company),
         visa_friendliness_score=score,
         positive_signals=positive,
         negative_signals=negative,
-        active_jobs=len(jobs),
+        active_jobs=repo.count_company_jobs(company_id),
         eligible_jobs=eligible_jobs,
         jobs=[JobRead.model_validate(job) for job in jobs],
     )
