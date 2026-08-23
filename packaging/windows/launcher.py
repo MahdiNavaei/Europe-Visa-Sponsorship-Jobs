@@ -245,6 +245,15 @@ class RuntimeServices:
             self.api_thread = threading.Thread(target=self._run_api, daemon=True, name="career-radar-api")
             self.api_thread.start()
             wait_for(f"{API_URL}/health", failure=self._api_failure)
+            health = read_json(f"{API_URL}/health")
+            from europe_visa_jobs import __version__
+
+            if health.get("status") != "ok" or health.get("version") != __version__:
+                raise RuntimeError(
+                    "The configured API port is serving an unexpected application: "
+                    f"expected {__version__!r}, received {health!r}. "
+                    "Close the other Career Radar/API process and retry."
+                )
 
             root = install_dir()
             node = root / "runtime" / "node.exe"
@@ -323,6 +332,7 @@ def smoke_test(data_dir: Path) -> int:
             seed_smoke_data()
         services.start()
         health = read_json(f"{API_URL}/health")
+        from europe_visa_jobs import __version__
         if health.get("status") != "ok" or health.get("version") != __version__:
             raise RuntimeError(f"Unexpected API health response: {health!r}")
         jobs = read_json(f"{API_URL}/api/v1/jobs?limit=1")
