@@ -181,7 +181,13 @@ def list_companies(
 
 
 @app.get("/api/v1/companies/{company_id}", response_model=CompanyIntelligenceRead)
-def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelligenceRead:
+def company_intelligence(
+    company_id: int,
+    session: SessionDep,
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> CompanyIntelligenceRead:
     repo = Repository(session)
     company = repo.get_company(company_id)
     if company is None:
@@ -190,7 +196,7 @@ def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelli
     # page returned to the browser. Keep the response bounded while aggregating
     # over every active job for truthful counts and signals.
     all_jobs = repo.list_company_jobs(company_id, limit=None)
-    jobs = all_jobs[:100]
+    jobs = repo.list_company_jobs(company_id, limit=limit, offset=offset)
     scorer = CompanyIntelligenceScorer()
     summaries = [scorer.score(company, job) for job in all_jobs]
     if summaries:
@@ -202,6 +208,7 @@ def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelli
     if company.sponsor_verified and "Recognized sponsor evidence is on file." not in positive:
         positive.insert(0, "Recognized sponsor evidence is on file.")
     eligible_jobs = repo.count_company_jobs(company_id, eligibility_status=EligibilityStatus.ELIGIBLE)
+    response.headers["X-Total-Count"] = str(len(all_jobs))
     return CompanyIntelligenceRead(
         company=CompanyRead.model_validate(company),
         visa_friendliness_score=score,
@@ -209,6 +216,7 @@ def company_intelligence(company_id: int, session: SessionDep) -> CompanyIntelli
         negative_signals=negative,
         active_jobs=repo.count_company_jobs(company_id),
         eligible_jobs=eligible_jobs,
+        jobs_total=len(all_jobs),
         jobs=[JobRead.model_validate(job) for job in jobs],
     )
 

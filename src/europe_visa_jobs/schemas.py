@@ -300,6 +300,7 @@ class CompanyIntelligenceRead(BaseModel):
     negative_signals: list[str] = Field(default_factory=list)
     active_jobs: int = Field(ge=0)
     eligible_jobs: int = Field(ge=0)
+    jobs_total: int = Field(ge=0)
     jobs: list[JobRead] = Field(default_factory=list)
 
 

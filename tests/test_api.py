@@ -180,6 +180,8 @@ def test_company_metrics_use_full_active_catalog_not_first_page(session_factory)
         payload = company.json()
         assert payload["active_jobs"] == 101
         assert payload["eligible_jobs"] == 101
-        assert len(payload["jobs"]) == 100
+        assert payload["jobs_total"] == 101
+        assert len(payload["jobs"]) == 50
+        assert company.headers["X-Total-Count"] == "101"
     finally:
         app.dependency_overrides.clear()

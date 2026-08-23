@@ -78,6 +78,7 @@ export interface CompanyIntelligence {
   negative_signals: string[];
   active_jobs: number;
   eligible_jobs: number;
+  jobs_total: number;
   jobs: Job[];
 }
 

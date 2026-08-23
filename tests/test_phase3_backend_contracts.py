@@ -77,6 +77,7 @@ def test_phase3_frontend_contracts(session_factory):
         assert payload["company"]["id"] == company_id
         assert payload["active_jobs"] == 1
         assert payload["eligible_jobs"] == 1
+        assert payload["jobs_total"] == 1
         assert payload["visa_friendliness_score"] > 0
 
         updated = client.put(

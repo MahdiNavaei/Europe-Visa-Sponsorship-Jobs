@@ -51,7 +51,7 @@ export const api = {
   getJob: (id: number) => request<JobDetail>(`/api/v1/jobs/${id}`),
   listCompanies: (query = "", offset = 0, limit = 50) =>
     requestPage<Company>(`/api/v1/companies?query=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`),
-  getCompany: (id: number) => request<CompanyIntelligence>(`/api/v1/companies/${id}`),
+  getCompany: (id: number, offset = 0, limit = 50) => request<CompanyIntelligence>(`/api/v1/companies/${id}?offset=${offset}&limit=${limit}`),
   getStats: () => request<Stats>("/api/v1/stats"),
   getCatalogStatus: () => request<CatalogSyncStatus>("/api/v1/catalog/status"),
   getCoverage: () => request<Coverage>("/api/v1/coverage"),

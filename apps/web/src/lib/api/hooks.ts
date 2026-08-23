@@ -40,8 +40,8 @@ export function useCatalogStatus() {
   return useQuery({ queryKey: ["catalog-status"], queryFn: api.getCatalogStatus, staleTime: 15_000, refetchInterval: 30_000 });
 }
 
-export function useCompany(id: number) {
-  return useQuery({ queryKey: ["company", id], queryFn: () => api.getCompany(id), enabled: Number.isFinite(id) && id > 0 });
+export function useCompany(id: number, offset = 0) {
+  return useQuery({ queryKey: ["company", id, offset], queryFn: () => api.getCompany(id, offset), enabled: Number.isFinite(id) && id > 0 });
 }
 
 export function useCandidate(id: number | null) {
