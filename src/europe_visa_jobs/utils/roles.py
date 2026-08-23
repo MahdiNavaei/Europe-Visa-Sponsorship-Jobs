@@ -25,7 +25,9 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
             r"\brag\b",
         ),
     ),
-    (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform")),
+    # A bare "data platform" phrase also appears in non-technical product and
+    # programme titles. Require an explicit technical role after the phrase.
+    (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform\b.*\b(?:engineer|architect|developer)")),
     (JobFamily.DATA_SCIENCE, (r"data scientist", r"data science", r"decision scientist")),
     (JobFamily.FRONTEND, (r"front[ -]?end", r"frontend", r"react developer", r"ui engineer")),
     (JobFamily.BACKEND, (r"back[ -]?end", r"backend", r"server[- ]side")),

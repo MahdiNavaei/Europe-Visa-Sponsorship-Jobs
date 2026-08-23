@@ -70,3 +70,8 @@ def test_ai_ml_profile_keeps_unrelated_mobile_and_frontend_roles_out_of_top_thre
     assert sum(labels[:5]) / 5 >= 0.9
     assert sum(labels[:10]) / 10 >= 0.9
     assert classify_role("Data Science") == classify_role("Data Scientist")
+
+
+def test_role_classifier_does_not_promote_data_platform_product_roles():
+    assert classify_role("Senior Data Platform Engineer") == "data_engineering"
+    assert classify_role("Senior Product Manager - Credit and Data Platform") == "other"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from europe_visa_jobs.db.models import Candidate, Job
@@ -51,7 +52,7 @@ class CandidateMatcher:
         self.company_scorer = company_scorer or CompanyIntelligenceScorer()
 
     def match(self, candidate: Candidate, job: Job) -> MatchResult:
-        profile = analyze_job(job.title, job.description, job.job_family, ontology=self.ontology)
+        profile = analyze_job(job.title, job.description, self._effective_job_family(job), ontology=self.ontology)
         # Persisted intelligence is authoritative when available, while old Phase-1 rows remain
         # fully matchable through the deterministic analyzer.
         if job.required_skills or job.preferred_skills or job.min_experience_years is not None or job.seniority:
@@ -109,6 +110,21 @@ class CandidateMatcher:
             company_negative_signals=company.negative_signals,
             profile=profile,
         )
+
+    @staticmethod
+    def _effective_job_family(job: Job) -> JobFamily | str:
+        """Prefer the current title classifier over stale persisted labels.
+
+        Older databases may contain a ``data_engineering`` or ``devops_cloud``
+        label produced by a broad phrase match. Explicitly non-technical titles
+        must not inherit that label during recommendation scoring.
+        """
+        classified = classify_role(job.title)
+        if classified is not JobFamily.OTHER:
+            return classified
+        if re.search(r"\b(?:product|program|programme|project) manager\b|\bservice designer\b|\b(?:sales|marketing|recruiter)\b", job.title, re.IGNORECASE):
+            return JobFamily.OTHER
+        return job.job_family
 
     @staticmethod
     def _coverage(matched: int, total: int) -> float:
