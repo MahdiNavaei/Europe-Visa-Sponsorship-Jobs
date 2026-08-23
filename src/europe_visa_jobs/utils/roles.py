@@ -33,7 +33,7 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
     (JobFamily.BACKEND, (r"back[ -]?end", r"backend", r"server[- ]side")),
     (JobFamily.FULLSTACK, (r"full[ -]?stack", r"fullstack")),
     (JobFamily.MOBILE, (r"mobile engineer", r"android", r"ios engineer", r"flutter")),
-    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"platform engineer", r"infrastructure engineer")),
+    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"\bplatform engineer\b", r"\binfrastructure engineer\b")),
     (JobFamily.QA_AUTOMATION, (r"qa automation", r"test automation", r"quality engineer", r"software test")),
     (JobFamily.SOFTWARE_ENGINEERING, (r"software engineer", r"software developer", r"developer")),
 )

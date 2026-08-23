@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.intelligence.ranking import RankingEngine
 from europe_visa_jobs.intelligence.matching import CandidateMatcher
+from europe_visa_jobs.intelligence.ranking import RankingEngine
 from europe_visa_jobs.schemas import ATSProvider, CandidateCreate, NormalizedJob
 from europe_visa_jobs.utils import classify_role
 
@@ -76,6 +76,7 @@ def test_ai_ml_profile_keeps_unrelated_mobile_and_frontend_roles_out_of_top_thre
 def test_role_classifier_does_not_promote_data_platform_product_roles():
     assert classify_role("Senior Data Platform Engineer") == "data_engineering"
     assert classify_role("Senior Product Manager - Credit and Data Platform") == "other"
+    assert classify_role("Senior Service Designer - Platform Engineering") == "other"
 
 
 def test_matching_uses_current_title_for_stale_job_family_labels():
