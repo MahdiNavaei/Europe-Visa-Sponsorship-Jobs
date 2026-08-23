@@ -71,10 +71,12 @@ def build_snapshot(sources: list[Source]) -> dict[str, Any]:
         and source.last_success_at is not None
     ]
     records = sorted((_source_record(source) for source in verified), key=lambda item: (item["provider"], item["slug"]))
-    latest = max(
-        (source.last_checked_at or source.last_success_at or source.verified_at for source in verified),
-        default=None,
-    )
+    timestamps: list[datetime] = []
+    for source in verified:
+        timestamp = source.last_checked_at or source.last_success_at or source.verified_at
+        if timestamp is not None:
+            timestamps.append(timestamp)
+    latest = max(timestamps, default=None)
     providers = Counter(str(record["provider"]) for record in records)
     return {
         "format": SNAPSHOT_FORMAT,

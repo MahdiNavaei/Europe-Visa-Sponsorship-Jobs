@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 from sqlalchemy.orm import Session
 
+from europe_visa_jobs.db.models import Source
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.discovery.methods import (
     common_crawl_candidates,
@@ -164,7 +165,7 @@ async def discover_and_validate(
         )
         run.candidate_after_filter_count = len(candidates)
 
-        pending: list[tuple[int, SourceCandidate, object]] = []
+        pending: list[tuple[int, SourceCandidate, Source]] = []
         now = datetime.now(UTC)
         for item in candidates.values():
             source = registry.upsert_candidate(item, enabled=False)
