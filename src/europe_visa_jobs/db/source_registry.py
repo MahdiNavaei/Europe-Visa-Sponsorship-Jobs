@@ -273,6 +273,8 @@ class SourceRegistry:
                 source.enabled = False
             elif source.consecutive_failures >= 3:
                 source.status = SourceStatus.FAILING.value
+                # Scheduled retry selection explicitly includes verified
+                # failing rows, so this health gate is not permanent.
                 source.enabled = False
             else:
                 source.status = SourceStatus.DEGRADED.value
@@ -365,7 +367,6 @@ class SourceRegistry:
             Job.location.ilike("%europe%"),
             Job.location.ilike("%remote%eu%"),
             Job.location.ilike("%remote%europe%"),
-            Job.location.ilike("%remote%emea%"),
         )
         ai_data_ml_scope = Job.job_family.in_(["ai_ml", "data_engineering", "data_science", "mlops"])
         counts = {

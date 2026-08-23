@@ -9,6 +9,8 @@ from europe_visa_jobs.utils import classify_role, infer_country
 class WorkdayConnector(BaseConnector):
     """Workday is a boundary adapter: tenants require a tenant/site-specific POST contract."""
 
+    completeness = "partial"
+
     async def fetch_jobs(self) -> list[NormalizedJob]:
         metadata = self.source.metadata if isinstance(self.source.metadata, dict) else {}
         endpoint = self.endpoint("")

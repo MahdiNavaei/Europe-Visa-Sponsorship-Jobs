@@ -25,6 +25,10 @@ class ConnectorNotModified(ConnectorError):
 
 
 class BaseConnector(ABC):
+    # A connector may downgrade this when the provider exposes only a partial
+    # public surface. Ingestion uses it to protect previously known jobs.
+    completeness = "complete"
+
     def __init__(self, client: httpx.AsyncClient, source: SourceConfig) -> None:
         self.client = client
         self.source = source

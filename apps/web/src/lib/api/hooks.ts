@@ -32,8 +32,8 @@ export function useJob(id: number) {
   return useQuery({ queryKey: ["job", id], queryFn: () => api.getJob(id), enabled: Number.isFinite(id) && id > 0 });
 }
 
-export function useCompanies(country?: string) {
-  return useQuery({ queryKey: ["companies", country], queryFn: () => api.listCompanies(country), staleTime: 60_000 });
+export function useCompanies(query = "", offset = 0) {
+  return useQuery({ queryKey: ["companies", query, offset], queryFn: () => api.listCompanies(query, offset), staleTime: 60_000 });
 }
 
 export function useCompany(id: number) {

@@ -24,6 +24,7 @@ class AshbyConnector(BaseConnector):
             # source validation.
             board_url = self.source.board_url or self.source.careers_url or f"https://jobs.ashbyhq.com/{self.source.slug}"
             response = await self._get(board_url)
+            self.completeness = "partial"
             try:
                 marker = "window.__appData = "
                 start = response.text.index(marker) + len(marker)

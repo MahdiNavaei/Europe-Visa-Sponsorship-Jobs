@@ -117,7 +117,7 @@ It:
 2. bootstraps the generated verified source registry and audited manual seeds,
 3. re-fetches current ATS vacancies,
 4. upserts jobs deterministically,
-5. deactivates jobs that disappeared from a successfully refreshed source,
+5. deactivates jobs that disappeared only when provider enumeration is complete,
 6. re-runs eligibility analysis,
 7. reports active, eligible, and newest-posting statistics.
 
@@ -125,18 +125,20 @@ A deployed instance must provide a persistent PostgreSQL connection through the 
 
 **Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
 
-The Windows desktop runtime has its own local refresh cycle: first launch fetches live jobs, later launches refresh data when it is older than 24 hours, and users can trigger a refresh manually from the launcher.
+The Windows desktop runtime opens the local UI after migration/seed and synchronizes the
+global catalog in the background. A manual refresh remains available, but it is not
+required for routine updates. Cached catalog data remains usable offline.
 
 Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
 
 ## Source coverage and refresh
 
-`config/sources.json` is the small, auditable manual seed set. The v1.1 release
-desktop catalog is `config/source-registry.snapshot.json`, generated only from
-this project's persisted live-verified registry. Release packaging validates its shape,
-health evidence, and minimum verified-board count before the Windows binaries
-are built. The snapshot is retained across restarts; discovery refreshes happen
-outside normal desktop startup.
+`config/sources.json` is the small, auditable manual seed set. It is only a bootstrap
+input. Scheduled discovery and source health use the durable `SOURCE_STATE_DATABASE_URL`
+registry, and daily ingestion publishes a versioned gzip catalog plus `latest.json` to
+the `market-data` branch. Existing clients consume that manifest without reinstalling.
+The packaged `config/source-registry.snapshot.json` remains an offline fallback, not the
+continuously updated source universe.
 
 The manual seeds currently include public feeds for:
 
@@ -181,6 +183,12 @@ PostgreSQL / local Windows SQLite
    ├─ candidates
    ├─ application states
    └─ ingestion runs
+
+Global market data is published separately from local candidate state. Catalog imports
+are hash-verified, staged, and transactional; profiles, saved jobs, application
+tracking, notes, and preferences are never replaced by a market-data update. See
+[`docs/data-delivery.md`](docs/data-delivery.md) for the manifest and provider
+completeness contract.
    ↓
 Candidate matching + ranking
    ↓

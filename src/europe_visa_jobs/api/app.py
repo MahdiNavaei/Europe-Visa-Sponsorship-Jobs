@@ -100,7 +100,7 @@ def list_jobs(
     session: SessionDep,
     response: Response,
     country: str | None = None,
-    status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+    status: EligibilityStatus | None = None,
     visa_status: EligibilityStatus | None = None,
     job_family: str | None = None,
     category: str | None = None,
@@ -149,10 +149,14 @@ def get_job(job_id: int, session: SessionDep) -> JobDetailRead:
 @app.get("/api/v1/companies", response_model=list[CompanyRead])
 def list_companies(
     session: SessionDep,
+    response: Response,
     country: str | None = None,
+    query: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> list[CompanyRead]:
-    companies = Repository(session).list_companies(country=country, limit=limit)
+    companies = Repository(session).list_companies(country=country, query=query, limit=limit, offset=offset)
+    response.headers["X-Total-Count"] = str(Repository(session).count_companies(country=country, query=query))
     return [CompanyRead.model_validate(item) for item in companies]
 
 
@@ -297,7 +301,7 @@ def _rank_recommendations(
     # place to browse every eligible technical role; this endpoint is a shortlist.
     ranked = [
         item
-        for item in engine.recommend(candidate, jobs, limit=500)
+        for item in engine.recommend(candidate, jobs, limit=None)
         if item.total_score >= min_score and item.match.role_similarity >= 0.5
     ]
     if sort == "newest":

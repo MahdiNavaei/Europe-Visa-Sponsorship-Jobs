@@ -8,14 +8,23 @@ from europe_visa_jobs.utils import classify_role, infer_country
 
 class SmartRecruitersConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
-        response = await self._get(self.endpoint(f"https://api.smartrecruiters.com/v1/companies/{self.source.slug}/postings"), params={"limit": 100})
-        try:
-            payload = response.json()
-            rows = payload["content"]
-            if not isinstance(rows, list):
-                raise TypeError
-        except (ValueError, KeyError, TypeError) as exc:
-            raise ConnectorError("smartrecruiters: invalid postings payload", category="invalid_response") from exc
+        url = self.endpoint(f"https://api.smartrecruiters.com/v1/companies/{self.source.slug}/postings")
+        rows: list[dict] = []
+        offset = 0
+        while True:
+            response = await self._get(url, params={"limit": 100, "offset": offset})
+            try:
+                payload = response.json()
+                batch = payload["content"]
+                if not isinstance(batch, list):
+                    raise TypeError
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ConnectorError("smartrecruiters: invalid postings payload", category="invalid_response") from exc
+            rows.extend(item for item in batch if isinstance(item, dict))
+            total = payload.get("totalFound")
+            if len(batch) < 100 or (isinstance(total, int) and len(rows) >= total):
+                break
+            offset += len(batch)
         return [_job(self.source, row) for row in rows if isinstance(row, dict)]
 
 

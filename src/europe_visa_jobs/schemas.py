@@ -259,6 +259,10 @@ class JobRead(BaseModel):
     seniority: SeniorityLevel | None = None
     eligibility_status: EligibilityStatus | None = None
     eligibility_score: int | None = None
+    classification_status: str = "classification_unknown"
+    job_sponsorship_signal: str = "not_mentioned"
+    company_sponsor_status: str = "unresolved"
+    final_candidate_eligibility: str = "unknown"
 
     model_config = ConfigDict(from_attributes=True)
 

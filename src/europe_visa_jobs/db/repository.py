@@ -22,6 +22,18 @@ from europe_visa_jobs.utils import classify_role, normalize_company_name, normal
 _TRACKING_QUERY_KEYS = {"fbclid", "gclid", "ref", "source", "utm_campaign", "utm_medium", "utm_source", "utm_term"}
 
 
+def _job_sponsorship_signal(assessment: EligibilityAssessment) -> str:
+    positive = any(item.kind.value == "job_positive" for item in assessment.evidence)
+    negative = any(item.kind.value == "job_negative" for item in assessment.evidence)
+    if positive and negative:
+        return "conflicting"
+    if positive:
+        return "confirmed_yes"
+    if negative:
+        return "confirmed_no"
+    return "not_mentioned"
+
+
 def canonicalize_apply_url(value: str | None) -> str | None:
     if not value:
         return None
@@ -75,6 +87,7 @@ class Repository:
         normalized_job: NormalizedJob,
         assessment: EligibilityAssessment,
         career_url: str | None = None,
+        classification_status: str = "technical",
     ) -> Job:
         sponsor = self.find_sponsor_record(normalized_job.company_name, normalized_job.country)
         company = self.upsert_company(
@@ -116,6 +129,10 @@ class Repository:
                 seniority=profile.seniority.value if profile.seniority else None,
                 eligibility_status=assessment.status.value,
                 eligibility_score=assessment.score,
+                classification_status=classification_status,
+                job_sponsorship_signal=_job_sponsorship_signal(assessment),
+                company_sponsor_status="verified_registry" if sponsor is not None else "not_found",
+                final_candidate_eligibility=assessment.status.value,
             )
             self.session.add(job)
             self.session.flush()
@@ -140,6 +157,10 @@ class Repository:
             job.seniority = profile.seniority.value if profile.seniority else None
             job.eligibility_status = assessment.status.value
             job.eligibility_score = assessment.score
+            job.classification_status = classification_status
+            job.job_sponsorship_signal = _job_sponsorship_signal(assessment)
+            job.company_sponsor_status = "verified_registry" if sponsor is not None else "not_found"
+            job.final_candidate_eligibility = assessment.status.value
             job.last_seen_at = datetime.now(UTC)
             job.active = True
             job.evidence.clear()
@@ -268,7 +289,7 @@ class Repository:
         self,
         *,
         include_unknown: bool = False,
-        limit: int = 500,
+        limit: int | None = None,
         country: str | None = None,
         role: str | None = None,
         query: str | None = None,
@@ -301,7 +322,9 @@ class Repository:
                     Job.description.ilike(pattern),
                 )
             )
-        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit)
+        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt).unique())
 
     def get_job(self, job_id: int) -> Job | None:
@@ -354,12 +377,22 @@ class Repository:
     def get_candidate_by_name(self, name: str) -> Candidate | None:
         return self.session.scalar(select(Candidate).where(Candidate.name == name))
 
-    def list_companies(self, *, country: str | None = None, limit: int = 100) -> list[Company]:
+    def list_companies(self, *, country: str | None = None, query: str | None = None, limit: int = 100, offset: int = 0) -> list[Company]:
         stmt = select(Company)
         if country:
             stmt = stmt.where(Company.country == country)
-        stmt = stmt.order_by(Company.name).limit(limit)
+        if query and query.strip():
+            stmt = stmt.where(Company.name.ilike(f"%{query.strip()}%"))
+        stmt = stmt.order_by(Company.name).limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
+
+    def count_companies(self, *, country: str | None = None, query: str | None = None) -> int:
+        stmt = select(func.count(Company.id))
+        if country:
+            stmt = stmt.where(Company.country == country)
+        if query and query.strip():
+            stmt = stmt.where(Company.name.ilike(f"%{query.strip()}%"))
+        return int(self.session.scalar(stmt) or 0)
 
     def get_company(self, company_id: int) -> Company | None:
         return self.session.get(Company, company_id)

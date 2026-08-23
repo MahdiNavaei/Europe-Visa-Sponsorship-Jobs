@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: daily-ingestion
@@ -42,12 +42,11 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[postgres]"
 
-      - name: Validate real source catalog
+      - name: Validate authoritative source snapshot
         run: |
           python - <<'PY'
           from europe_visa_jobs.ingestion.sources import load_sources
-          sources = load_sources("config/sources.json")
-          assert len(sources) >= 8, f"expected a real source catalog, got {len(sources)} sources"
+          sources = load_sources("config/source-registry.snapshot.json", minimum_snapshot_sources=500)
           assert all("example" not in source.slug.lower() for source in sources)
           print(f"validated {len(sources)} live ATS sources")
           PY
@@ -56,11 +55,11 @@ jobs:
         run: alembic upgrade head
 
       - name: Load official sponsor evidence before eligibility ingestion
-        run: evj-ingest sponsors --production --file data/sponsors.csv
+        run: evj-ingest sponsors --production --file data/sponsors.csv.gz
 
       - name: Bootstrap and validate priority seeds
         run: |
-          evj-ingest sources bootstrap --config config/sources.json
+          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
       - name: Ingest current jobs from verified registry sources
@@ -81,3 +80,17 @@ jobs:
           if active == 0:
               raise SystemExit("daily ingestion persisted zero active jobs")
           PY
+
+      - name: Publish durable catalog snapshot
+        run: python scripts/publish_catalog.py --output data/catalog --version "${GITHUB_RUN_ID}"
+
+      - name: Persist catalog on market-data branch
+        shell: bash
+        run: |
+          git config user.name "career-radar-bot"
+          git config user.email "career-radar-bot@users.noreply.github.com"
+          git fetch origin market-data || true
+          git checkout -B market-data origin/market-data 2>/dev/null || git checkout -B market-data
+          git add data/catalog
+          git commit -m "data: publish catalog ${GITHUB_RUN_ID}" || echo "No catalog changes"
+          git push origin market-data

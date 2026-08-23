@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     env:
       PYTHONPATH: src:.
-      DATABASE_URL: sqlite:///./source-discovery.sqlite
+      DATABASE_URL: ${{ secrets.SOURCE_STATE_DATABASE_URL }}
       DISCOVERY_TIMEOUT_SECONDS: "15"
       DISCOVERY_RETRY_ATTEMPTS: "2"
       DISCOVERY_CONCURRENCY: "8"
@@ -39,8 +39,9 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Migrate and bootstrap registry
         run: |
+          test -n "$DATABASE_URL" || (echo "SOURCE_STATE_DATABASE_URL is required for durable discovery state" && exit 1)
           alembic upgrade head
-          evj-ingest sources bootstrap --config config/sources.json
+          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
       - name: Discover and validate public ATS boards
         env:
           DISCOVERY_MODE: ${{ inputs.mode || 'recent' }}
@@ -48,10 +49,5 @@ jobs:
         run: evj-ingest sources discover --mode "$DISCOVERY_MODE" --limit "$DISCOVERY_LIMIT"
       - name: Export health and coverage evidence
         run: evj-ingest sources health --json > source-coverage.json
-      - uses: actions/upload-artifact@v6
-        with:
-          name: source-coverage-${{ github.run_id }}
-          path: |
-            source-coverage.json
-            source-discovery.sqlite
-          retention-days: 30
+      - name: Confirm durable registry state
+        run: test -s source-coverage.json

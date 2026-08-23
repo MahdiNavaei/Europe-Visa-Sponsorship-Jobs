@@ -154,6 +154,24 @@ def refresh_jobs(data_dir: Path) -> None:
     from europe_visa_jobs.ingestion.sources import load_sources
     from europe_visa_jobs.ingestion.sponsors import import_production_sponsor_evidence
 
+    catalog_url = os.environ.get(
+        "CAREERRADAR_CATALOG_MANIFEST_URL",
+        "https://raw.githubusercontent.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/market-data/latest.json",
+    )
+    # Installed clients consume the centrally generated data snapshot first. A
+    # failed update leaves the prior local catalog untouched and is allowed to
+    # fall back to the packaged bootstrap for offline/first-install recovery.
+    try:
+        from europe_visa_jobs.catalog import sync_catalog
+        from europe_visa_jobs.db.session import SessionLocal
+        with SessionLocal() as session:
+            sync_catalog(session, catalog_url, data_dir / "catalog-cache")
+            session.commit()
+        mark_refreshed(data_dir)
+        return
+    except Exception as exc:
+        print(f"Central catalog sync unavailable; using local recovery path: {exc}")
+
     sources = bundle_dir() / "config" / "sources.json"
     snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
     sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
@@ -434,8 +452,12 @@ class LauncherWindow:
             self._ui(self.open_button.configure, state="normal")
             self._ui(self.refresh_button.configure, state="normal")
             if self.first_run:
-                self._ui(self._set_status, "First launch: fetching live European jobs. This can take a little while…")
-                self._refresh_worker(open_after=True)
+                # A bundled/migrated catalog is usable immediately. Network
+                # synchronization is deliberately background work; first launch
+                # must not wait for hundreds of ATS boards or block onboarding.
+                self._ui(self._set_status, "Career Radar is ready. Updating the job catalog in the background…")
+                self._ui(self.open_app)
+                threading.Thread(target=self._refresh_worker, daemon=True, name="career-radar-initial-sync").start()
             else:
                 self._ui(self._set_status, "Career Radar is running locally.")
                 self._ui(self.open_app)

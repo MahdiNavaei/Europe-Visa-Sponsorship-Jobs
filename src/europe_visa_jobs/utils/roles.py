@@ -39,13 +39,27 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
 )
 
 
-def classify_role(title: str) -> JobFamily:
-    lowered = title.casefold()
+def classify_role(title: str, department: str | None = None, description: str | None = None) -> JobFamily:
+    lowered = f"{title} {department or ''}".casefold()
+    # Generic "developer" is not enough evidence for a technical vacancy.
+    # Keep common commercial roles auditable as nontechnical instead of allowing
+    # a substring match to manufacture software jobs.
+    if re.search(r"\b(?:business|sales|account|real estate)\s+developer\b", lowered):
+        return JobFamily.OTHER
+    if re.search(r"\b(?:sales|solutions)\s+engineer\b", lowered) and not re.search(
+        r"\b(?:software|platform|data|cloud|systems|network|machine learning)\b", lowered
+    ):
+        return JobFamily.OTHER
     for family, patterns in ROLE_RULES:
         if any(re.search(pattern, lowered) for pattern in patterns):
             return family
+    # Description is a secondary signal only. It can recover titles such as
+    # "Platform Specialist" when the provider supplies a technical department,
+    # without making a bare prose mention of "developer" classify a job.
+    if description and re.search(r"\b(?:python|java|javascript|kubernetes|sql|machine learning|software development)\b", description.casefold()):
+        return JobFamily.SOFTWARE_ENGINEERING
     return JobFamily.OTHER
 
 
-def is_supported_tech_role(title: str) -> bool:
-    return classify_role(title) is not JobFamily.OTHER
+def is_supported_tech_role(title: str, department: str | None = None, description: str | None = None) -> bool:
+    return classify_role(title, department, description) is not JobFamily.OTHER

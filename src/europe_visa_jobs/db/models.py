@@ -193,6 +193,10 @@ class Job(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    classification_status: Mapped[str] = mapped_column(String(30), default="classification_unknown", nullable=False, index=True)
+    job_sponsorship_signal: Mapped[str] = mapped_column(String(30), default="not_mentioned", nullable=False, index=True)
+    company_sponsor_status: Mapped[str] = mapped_column(String(30), default="unresolved", nullable=False, index=True)
+    final_candidate_eligibility: Mapped[str] = mapped_column(String(30), default="unknown", nullable=False, index=True)
 
     company: Mapped[Company] = relationship(back_populates="jobs")
     evidence: Mapped[list[JobEvidence]] = relationship(back_populates="job", cascade="all, delete-orphan")

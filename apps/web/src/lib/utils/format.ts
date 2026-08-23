@@ -64,7 +64,7 @@ export function formatJobFamily(value: JobFamily, locale = "en") {
 }
 
 export function formatCountry(value: string | null | undefined, locale = "en") {
-  if (!value) return locale === "fa" ? "اروپا" : "Europe";
+  if (!value) return locale === "fa" ? "کشور نامشخص" : "Country unknown";
   return locale === "fa" ? countriesFa[value] ?? value : value;
 }
 

@@ -48,8 +48,8 @@ export const api = {
   listJobsPage: (params: URLSearchParams = new URLSearchParams()) =>
     requestPage<Job>(`/api/v1/jobs?${params.toString()}`),
   getJob: (id: number) => request<JobDetail>(`/api/v1/jobs/${id}`),
-  listCompanies: (country?: string) =>
-    request<Company[]>(`/api/v1/companies${country ? `?country=${encodeURIComponent(country)}` : ""}`),
+  listCompanies: (query = "", offset = 0, limit = 50) =>
+    requestPage<Company>(`/api/v1/companies?query=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`),
   getCompany: (id: number) => request<CompanyIntelligence>(`/api/v1/companies/${id}`),
   getStats: () => request<Stats>("/api/v1/stats"),
   getCoverage: () => request<Coverage>("/api/v1/coverage"),

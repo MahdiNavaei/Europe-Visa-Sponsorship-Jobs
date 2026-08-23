@@ -96,8 +96,8 @@ async def _ingest(
                 limit=limit,
                 largest_first=largest_first,
             ) if only_uningested else registry.list_sources(
-                enabled_only=True,
                 verified_only=True,
+                statuses={"healthy", "degraded", "failing", "empty"},
                 limit=limit,
             )
             sources = [registry.to_config(item) for item in items if providers is None or item.provider in providers]
