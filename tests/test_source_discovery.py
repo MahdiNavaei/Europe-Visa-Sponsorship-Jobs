@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from europe_visa_jobs.db.models import Company, Job
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.discovery.patterns import identify_source_url
 from europe_visa_jobs.schemas import (
@@ -51,6 +52,38 @@ def test_registry_health_transitions_and_coverage(db_session):
     assert coverage["active_jobs"] == 0  # no Job rows were fabricated by registry accounting
     assert coverage["raw_jobs_scanned"] == 2
     assert coverage["european_ai_data_ml_jobs"] == 0
+
+
+def test_coverage_counts_explicit_europe_location_regardless_of_remote_word_order(db_session):
+    db_session.add(
+        Company(
+            name="Europe Remote Co",
+            normalized_name="europe remote co",
+            country=None,
+        )
+    )
+    db_session.flush()
+    company = db_session.query(Company).one()
+    db_session.add(
+        Job(
+            company_id=company.id,
+            external_id="europe-1",
+            provider="greenhouse",
+            source_slug="europe-remote-co",
+            company_name=company.name,
+            title="Senior Software Engineer",
+            description="",
+            location="Europe (Full Remote)",
+            apply_url="https://example.test/jobs/europe-1",
+            job_family="software_engineering",
+            eligibility_status="unknown",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    coverage = SourceRegistry(db_session).coverage()
+    assert coverage["european_technical_jobs"] == 1
 
 
 def test_registry_filters_and_cache_round_trip(db_session):

@@ -358,6 +358,11 @@ class SourceRegistry:
         jobs = select(Job).where(Job.active.is_(True))
         european_scope = or_(
             Job.country.in_(EUROPEAN_COUNTRIES),
+            # Some ATS feeds provide an explicit Europe-only location with
+            # the geography before the word "remote" (for example,
+            # "Europe (Full Remote)"). Do not require a particular word
+            # order when the location itself explicitly names Europe.
+            Job.location.ilike("%europe%"),
             Job.location.ilike("%remote%eu%"),
             Job.location.ilike("%remote%europe%"),
             Job.location.ilike("%remote%emea%"),

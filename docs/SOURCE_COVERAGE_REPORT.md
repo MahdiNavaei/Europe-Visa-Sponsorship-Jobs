@@ -171,8 +171,22 @@ and published release remain gated on that completion.
 
 The interrupted resumable-ingestion database was recovered by copying the
 SQLite database and its rollback journal before opening the copy. SQLite
-reported `integrity_check = ok`. The recovered database contains 4,182 active
-jobs and the coverage API reports 676 European technical jobs and 121
-European AI/data/ML jobs. This is current local evidence, not a release claim:
-the technical usefulness gate is still short by 324 jobs, and the packaged
-snapshot remains the separately validated 653-board artifact.
+reported `integrity_check = ok`. The recovered database initially contained
+4,182 active jobs. After live-ingesting the provenance-preserving European
+candidate set and backfilling only explicit country/city information already
+present in stored locations, the current coverage API reports:
+
+| Metric | Current local value |
+| --- | ---: |
+| Live-verified enabled boards | 771 |
+| Active technical jobs | 4,974 |
+| European technical jobs | 1,041 |
+| European AI/data/ML jobs | 169 |
+| Eligible | 28 |
+| Unknown | 4,909 |
+| Rejected | 37 |
+
+The packaged snapshot was regenerated from this registry and validates at 771
+verified boards. These are current local evidence values, not a release claim:
+frontend, Windows, cross-browser, hosted-CI, and publication gates remain
+separate requirements.

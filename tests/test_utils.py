@@ -10,9 +10,10 @@ from europe_visa_jobs.utils import (
 def test_country_inference_uses_country_city_and_default():
     assert infer_country("Amsterdam, Netherlands") == "Netherlands"
     assert infer_country("Berlin") == "Germany"
+    assert infer_country("Barcelona") == "Spain"
+    assert infer_country("Kyiv, Ukraine") == "Ukraine"
     assert infer_country("Remote", "Ireland") == "Ireland"
     assert infer_country("Remote") is None
-    assert infer_country("Kyiv, Ukraine") is None
 
 
 def test_role_classifier_covers_target_families():
