@@ -1,77 +1,145 @@
 # Source coverage report
 
-Run date: 2026-08-22 (Asia/Tehran)
+Run date: 2026-08-23 (Asia/Tehran)
 Branch: `feat/scalable-source-discovery`
-Base/final working-tree commit: `555173a3c3d9ee0807c482ba8a19917207445f7f` (implementation is currently uncommitted)
+Base: current `origin/main` (`380d18a3415e19b7243d938c0d01bb9e8c2009fe`)
 
-This report records observed results, not a claim of Europe-wide completeness. All counts below came from the live SQLite acceptance database `build/source-discovery-live.sqlite`, using public ATS responses and the repository's strict eligibility engine.
+This report records measured public-service results. It does not claim that an
+archive candidate is a live board until the provider endpoint has responded
+successfully.
 
-## Observed run
+## Implementation status
+
+The scalable discovery implementation is committed in the working branch and
+merged with current main. The branch preserves the PR #6 real-user ranking/UI
+changes and the release-hardening/runtime migration from current main.
+
+The registry now persists:
+
+- candidate lifecycle: `discovered`, `pending_validation`, `verified`,
+  `invalid`, `transient_failure`, `blocked`, and `retry_later`;
+- last check, failure type, validation attempts, and `retry_after`;
+- discovery-run candidate counts before/after filtering, cache skips, and
+  provider/category failure breakdowns;
+- verified and invalid candidates so future runs validate only new, due,
+  transient, or stale sources.
+
+Full-mode discovery follows the reference control design: Wayback CDX first,
+Common Crawl fallback/additive discovery, paginated recent urlscan discovery,
+provider-specific slug filters, seed union, previous-registry union, cheap
+provider probes, and bounded validation batches.
+
+## Controlled live runs
+
+All runs below used the persisted SQLite registry at
+`build/prompt1-live.sqlite`. The database is a local evidence artifact and is
+not committed.
+
+| Provider | Harvest records | Accepted after shape filter | Unique candidates | Verified | 404 | 403/blocked | Timeout | Network | Cache skips |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Greenhouse (paginated urlscan) | 1,100 | 1,096 | 117 | 107 | 10 | 0 | 0 | 0 | 0 |
+| Lever (paginated urlscan) | 157 | 156 | 84 | 49 | 3 | 0 | 0 | 32 | 0 |
+| Ashby (paginated urlscan) | 100 | 96 | 66 | 0 | 0 | 66 | 0 | 0 | 0 |
+| Workable (public control board) | 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+Percentages among attempted candidates:
+
+- Greenhouse: 91.45% verified, 8.55% HTTP 404.
+- Lever: 58.33% verified, 38.10% network failure, 3.57% HTTP 404.
+- Ashby: 100% blocked by the current Cloudflare edge for this client.
+- Workable: 100% verified in the one independently controlled public board.
+
+The previous persisted Ashby live run also recorded five real successful boards
+(`0x`, `0g`, `10xteam`, `1bios`, `1mind`) with HTTP 200 responses and jobs. The
+new run could not repeat them because the Ashby edge began returning HTTP 403
+for both API and hosted-page requests from this client. This is recorded as a
+provider limitation, not as verified current Ashby coverage.
+
+## Why the old 4,381-board run yielded 12
+
+The earlier full-mode Common Crawl run remains useful diagnostic evidence:
+
+| Provider | Candidates | Verified | Failure distribution |
+| --- | ---: | ---: | --- |
+| Greenhouse | 1,318 | 11 | 913 HTTP 404 (69.27%), 369 timeout (27.99%), 25 network (1.90%) |
+| Lever | 44 | 0 | 44 timeout (100%) |
+| Ashby | 1 | 1 | — |
+| Workable | 3,017 | 0 | 3,017 validation timeouts/exceptions (100%) |
+| Teamtailor | 1 | 0 | 1 timeout (100%) |
+| Total | 4,381 | 12 | 4,369 failed validations (including stale 404s and transient failures) |
+
+The causes are now separated:
+
+- Greenhouse’s high 404 rate is stale archived URL paths, not a Greenhouse
+  endpoint failure. The new urlscan sample verifies 107 boards with the same
+  canonical API.
+- Lever’s old zero-result run was dominated by Common Crawl candidates and
+  long GET/retry behavior. The corrected canonical endpoint and cheap probe
+  produce 49 live boards in the new sample; the remaining network failures are
+  transient and retryable.
+- Workable was probed against the wrong `/api/v3/accounts/.../jobs` route in
+  the old implementation. The public widget route
+  `/api/v1/widget/accounts/{slug}` now validates; Hugging Face returned HTTP
+  200 with seven jobs.
+- Ashby’s API endpoint is currently Cloudflare-blocked from this client. The
+  validator and ingestion connector fall back to the server-rendered hosted
+  board’s `window.__appData` when that page is reachable; it returned 47 and
+  136 jobs for independent direct probes before the edge began challenging the
+  client.
+- Teamtailor’s tenant-domain index produced 45 candidates, but its network
+  requests exceeded the bounded resolution/timeout window. Those candidates
+  remain `pending_validation`, not invalid.
+
+Wayback failed at the connection layer in this environment, and Common Crawl
+failed with connection errors. The reference project was run independently as
+a control; its legacy HTTP Wayback URL was also refused. urlscan remained
+reachable and its cursor pagination was added so the control was not limited to
+its first 100 results per domain.
+
+## Incremental and negative-cache evidence
+
+After the Greenhouse run, a repeat urlscan run harvested the same 1,100 records,
+selected zero validation attempts, and reported `skipped_cached_count=117`.
+Verified sources carry a seven-day health deadline; permanent-looking 404s
+carry a long retry deadline; transient/network failures carry a short retry
+deadline. An interrupted Teamtailor batch left its 45 sources in
+`pending_validation` and its discovery run unfinished, ready for a later
+bounded retry.
+
+## Expanded product evidence
+
+The verified registry contained 157 sources at the time of the sample
+ingestion. A bounded SQLite product run successfully ingested 29 Greenhouse
+sources before the local serial-writer limit was reached:
 
 | Metric | Observed value |
 | --- | ---: |
-| Static source seeds bootstrapped | 15 |
-| Candidate boards returned by bounded recent runs | 3 |
-| Candidate boards returned by a Common Crawl page | 563 Greenhouse; 1,722 Ashby |
-| Multi-provider Common Crawl breadth probe (2 pages/provider) | 7,715 candidates |
-| Live-verified sources | 8 |
-| Healthy sources | 7 |
-| Valid-but-empty sources | 1 |
-| Boards with current raw jobs | 7 |
-| Verified providers | Greenhouse, Ashby |
-| Raw postings fetched | 646 |
-| Active technical jobs | 75 |
-| European technical jobs | 50 |
-| AI/data/ML-family jobs | 21 |
-| AI/data/ML-family jobs in Europe | 16 |
-| Eligible | 13 |
-| Unknown | 62 |
-| Rejected | 0 |
-| Posted in last 24 hours | 2 |
-| Posted in last 7 days | 26 |
-| Duplicate rows | 0 (provider/source/external-id uniqueness) |
-| Inactive/stale jobs | 0 in this fresh database |
-| Current failing/blocked sources | 0 |
-| Persisted HTTP failure breakdown | 20 × HTTP 404 validation failures; 8 prior ingestion-category failures |
+| Verified sources in registry | 157 |
+| Sources with ingested jobs | 20 |
+| Successful raw postings fetched across ingestion runs | 5,485 |
+| Active technical jobs | 876 |
+| European technical jobs | 82 |
+| AI/ML-family jobs | 78 |
+| Eligible | 0 |
+| Unknown | 871 |
+| Rejected | 5 |
+| Posted in last 24 hours | 128 |
+| Posted in last 7 days | 276 |
 
-The eight verified boards were Greenhouse Atolls, HelloFresh, and N26 plus Ashby 0g, 0x, 10xteam, 1bios, and 1mind. Seven had current raw jobs; 0x was valid-but-empty. The Greenhouse boards contributed 497 raw/67 technical jobs in the earlier Greenhouse-only snapshot; after the complete acceptance refresh the database contains 646 raw/75 active technical jobs, including 8 Ashby technical jobs and the retained Greenhouse rows. A repeat ingestion returned HTTP 304 for the unchanged Atolls snapshot and retained its previous jobs. Successful ingestion runtimes were 2.30s, 3.93s, and 2.44s on the repeat Greenhouse run. A simulated/observed failed writer attempt on SQLite initially showed `database is locked`; the CLI now serializes SQLite ingestion while retaining bounded parallel ingestion for PostgreSQL.
+The zero eligible count reflects that this isolated evidence database did not
+include a matching sponsor-evidence dataset; unknown and rejected counts are
+still exposed rather than silently treated as eligible.
 
-## Discovery evidence
+## Support policy
 
-The first manual recent run returned three candidates, live-validated all three in 2.60s, and recorded no source failures. The subsequent Wayback recent run returned the same three deduplicated candidates and live-validated all three, but the archive index request timed out during the 136.48s run; this is recorded on the discovery run as an index error, not as a healthy board. A live Common Crawl page returned 563 Greenhouse candidates and 1,722 Ashby candidates. A broader two-page-per-provider breadth probe returned 7,715 candidates: Greenhouse 1,307, Lever 44, Ashby 2,820, Workable 3,017, Personio 0, Teamtailor 1, Recruitee 0, SmartRecruiters 526, and Workday 0. That breadth probe was candidate discovery evidence, not verified coverage. The subsequent 5,000-board live-validation attempt exceeded the 30-minute acceptance window under the configured timeout/retry policy; the later collection endpoint also timed out before a complete second pass. It is therefore recorded as incomplete rather than reported as zero valid boards. A bounded 20-board Greenhouse validation exercise produced 0 verified and 20 HTTP 404 failures. A direct Ashby probe validated 30 sampled candidates; the application persisted and ingested five Ashby boards in 30.92s. Full-mode Wayback/Common Crawl discovery is additive and bounded; it must not be interpreted as verified coverage until each candidate passes a live provider response check.
+Greenhouse and Lever are live-proven in the current run. Workable is proven by
+the controlled public board and is now supported through its public widget
+endpoint. Ashby has a working hosted-page fallback and historical HTTP-200
+evidence, but current Cloudflare blocking prevents claiming fresh broad Ashby
+coverage. Personio, Teamtailor, Recruitee, SmartRecruiters, and Workday remain
+experimental until a live source is validated and ingested.
 
-A later fresh full-mode run on 2026-08-22 used all nine provider boundaries, two Common Crawl pages per provider, a five-second timeout, one retry, and concurrency 32 against a new SQLite database. It discovered 4,381 unique candidates, validated 12 live boards, recorded 4,369 failed validations, and completed in 843.17s (14m 3.17s). Candidate totals were Greenhouse 1,318, Lever 44, Ashby 1, Workable 3,017, Teamtailor 1, and Personio/Recruitee/SmartRecruiters/Workday 0. The 12 verified boards were Greenhouse (11) and Ashby (1); Lever, Workable, and Teamtailor produced candidates but no verified boards in this run. The exact persisted failure breakdown was Greenhouse: 913 HTTP 404, 369 timeout, and 25 network failures; Lever: 44 timeouts; Workable: 3,017 timeouts; Teamtailor: 1 timeout. No HTTP 403, 429, or 5xx responses occurred in this run. Wayback index failures for Recruitee and SmartRecruiters were recorded on the run rather than counted as source failures. This run is the authoritative current mass-validation evidence; it remains below the 5,000 verified-board target because the public indexes returned mostly stale/dead or timeout-bound candidates.
-
-Provider breakdown for the persisted registry after the exercises: Greenhouse 34 candidate records (3 healthy/verified, 20 degraded 404s, 11 unverified seeds), Lever 0, Ashby 6 candidate records (5 healthy/verified, 1 valid-but-empty), Workable 0, Personio 0, Teamtailor 0, Recruitee 0, SmartRecruiters 0, Workday 0, Other 0. Current jobs: Greenhouse 67 active technical rows and Ashby 8 active technical rows. Lever produced 44 candidates in its Common Crawl page, but a 30-candidate live sample had 0 valid and 30 HTTP 404 results.
-
-The architecture can process thousands of candidates with provider/ingestion concurrency limits and registry deduplication. This run did not claim 5,000 verified boards because the available public index response was not sufficiently fast or stable to complete that volume during the acceptance window. The system reports the measured count rather than padding it with unvalidated archive URLs.
-
-## Local SQLite scale smoke
-
-`scripts/source_scale_smoke.py` generated a deterministic local fixture of 10,000 persisted sources and 40,000 active jobs using the production schema (no external company dataset). On this Windows workstation it measured:
-
-| Operation | Runtime |
-| --- | ---: |
-| Insert fixture | 3.811s |
-| Coverage query | 0.360s |
-| Source health lookup (100 rows) | 0.003s |
-| Active-job count | 0.002s |
-
-An earlier 5,000-source/20,000-job run completed in 2.433s insert and 0.228s coverage-query time. These fixtures validate local registry/query scale, not live-board verification. PostgreSQL parallel ingestion remains the production path for larger live refreshes.
-
-The same 10,000-source/40,000-job fixture was loaded into PostgreSQL 16 after the full migration chain. It measured 14.175s insert, 0.379s coverage, 0.005s source-health lookup, and 0.012s active-job count. PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` used the `ix_jobs_active` bitmap index for active-job counts (14.052ms) and the source registry ordering index for the verified-source page (0.139ms).
-
-## Regression evidence
-
-- Backend: 66 tests, Python 3.11 and 3.12, 85.03% coverage; compile, Ruff, and mypy pass.
-- Frontend: 4 Vitest tests, ESLint, production build, and deterministic `npm ci`/production Docker web build pass.
-- Browser: 24/24 deterministic critical flows pass across Chromium (installed Chrome channel), Firefox, and WebKit—8 per engine—including coverage diagnostics, unknown counts, onboarding, pagination, job detail, recommendations, and Persian RTL. Accessibility/responsive checks also pass 12/12 across the three engines. A separate gated live acceptance test also passed 1/1 against the production Next server and live FastAPI database, including a real employer apply URL.
-- Migrations: SQLite and PostgreSQL 16 upgrade, downgrade-one, re-upgrade, and downgrade-base round trips pass through revision `0006_source_query_indexes`.
-- Backend Docker image: built successfully. Production Compose was built and started successfully on an isolated explicit bridge network; Postgres 16 became healthy, the API returned health 200 and coverage 200, and the container registry bootstrap persisted all 15 seeds. The host's default Compose network allocation remains exhausted, so the acceptance run used an explicit temporary subnet without deleting existing networks.
-- Windows: source launcher tests pass; PyInstaller 6.22.2 completed under Python 3.12. Inno Setup 6.7.3 compiled the installer and 7-Zip 26.02 created/tested the portable archive. Silent installed-runtime and portable-runtime smoke tests both passed with host Python/Node removed from `PATH`; each persisted one smoke job while serving the bundled API and production Next standalone frontend.
-- Security: `pip-audit --skip-editable` and `npm audit --audit-level=high` both report no known vulnerabilities. The local project itself is skipped by pip-audit because it is an editable distribution, as expected.
-- Lighthouse: an isolated Lighthouse 12.8.2 audit generated `build/lighthouse-en.json` against the production Next page. The measured category scores were performance 0.99, accessibility 0.95, best practices 0.96, and SEO 1.00. The CLI still exited nonzero only during Chrome-launcher temporary-directory cleanup (`EPERM`), so the score artifact is available but the command is not fully green. The initial `npx lighthouse` path also hit npm `ECOMPROMISED`.
-
-## Evidence policy
-
-Eligibility is not inferred from a board's existence, job title, location, or a generic “visa” keyword. Positive, negative, and missing sponsorship evidence are preserved; missing evidence remains `unknown`. European location filtering is applied during normalization and the existing country rules/evidence engine remains the final gate.
+The final completion audit still requires the full backend/frontend/browser,
+PostgreSQL/SQLite, security, Lighthouse, Docker, Windows, and clean-PR gates
+to run against the final committed branch. No release tag or published release
+was retargeted or published during this Prompt 1 work.

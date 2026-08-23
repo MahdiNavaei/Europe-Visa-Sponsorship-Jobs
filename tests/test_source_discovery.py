@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.discovery.patterns import identify_source_url
 from europe_visa_jobs.schemas import (
@@ -8,6 +10,7 @@ from europe_visa_jobs.schemas import (
     SourceConfig,
     SourceStatus,
     SourceValidation,
+    SourceValidationState,
 )
 
 
@@ -123,3 +126,63 @@ def test_registry_blocks_repeated_failures_and_recovers(db_session):
         job_count=1,
     ))
     assert source.status == SourceStatus.HEALTHY and source.enabled is True and source.consecutive_failures == 0
+
+
+def test_registry_lifecycle_and_negative_cache(db_session):
+    registry = SourceRegistry(db_session)
+    candidate = SourceCandidate(
+        provider=ATSProvider.LEVER,
+        board_identifier="cache-me",
+        canonical_url="https://jobs.lever.co/cache-me",
+        api_url="https://api.lever.co/v0/postings/cache-me",
+        discovery_method="urlscan_recent",
+    )
+    source = registry.upsert_candidate(candidate)
+    assert source.validation_state == SourceValidationState.DISCOVERED.value
+    assert registry.should_validate(source)
+    registry.mark_pending(source)
+    assert source.validation_state == SourceValidationState.PENDING_VALIDATION.value
+    registry.record_validation(
+        source,
+        SourceValidation(
+            valid=False,
+            provider=ATSProvider.LEVER,
+            board_identifier="cache-me",
+            canonical_url=candidate.canonical_url,
+            http_status=404,
+            error_category="not_found",
+        ),
+    )
+    assert source.validation_state == SourceValidationState.INVALID.value
+    assert source.retry_after is not None and source.last_checked_at is not None
+    assert not registry.should_validate(source)
+    source.retry_after = datetime.now(UTC) - timedelta(seconds=1)
+    assert registry.should_validate(source)
+    registry.record_validation(
+        source,
+        SourceValidation(
+            valid=True,
+            provider=ATSProvider.LEVER,
+            board_identifier="cache-me",
+            canonical_url=candidate.canonical_url,
+            http_status=200,
+            job_count=3,
+        ),
+    )
+    assert source.validation_state == SourceValidationState.VERIFIED.value
+    assert not registry.should_validate(source)
+
+
+def test_import_config_canonicalizes_provider_case_and_endpoint(db_session):
+    registry = SourceRegistry(db_session)
+    source = registry.import_config(
+        SourceConfig(
+            provider=ATSProvider.ASHBY,
+            company_name="Acme",
+            slug="Acme",
+            careers_url="https://jobs.ashbyhq.com/Acme/jobs/123",
+        )
+    )
+    assert source.board_identifier == "acme"
+    assert source.api_url == "https://api.ashbyhq.com/posting-api/job-board/acme"
+    assert registry.get(ATSProvider.ASHBY, "acme") is source

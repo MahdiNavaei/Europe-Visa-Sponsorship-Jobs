@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 import europe_visa_jobs.ingestion.cli as ingestion_cli
+from europe_visa_jobs.connectors.ashby import AshbyConnector
 from europe_visa_jobs.connectors.recruitee import RecruiteeConnector
 from europe_visa_jobs.connectors.smartrecruiters import SmartRecruitersConnector
 from europe_visa_jobs.connectors.teamtailor import TeamtailorConnector
@@ -117,6 +118,41 @@ async def test_provider_validation_shapes():
 
 
 @pytest.mark.asyncio
+async def test_ashby_hosted_page_fallback_for_api_block():
+    app_data = {
+        "organization": {"name": "Acme"},
+        "jobBoard": {"jobPostings": [{"id": "1", "title": "Engineer"}]},
+    }
+    html = f"window.__appData = {json.dumps(app_data)};"
+    calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if "api.ashbyhq.com" in str(request.url):
+            return httpx.Response(403, text="blocked", request=request)
+        return httpx.Response(200, text=html, headers={"content-type": "text/html"}, request=request)
+
+    candidate = identify_source_url("https://jobs.ashbyhq.com/acme")
+    assert candidate is not None
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await validate_candidate(client, candidate)
+    assert result.valid and result.job_count == 1 and calls == 2
+
+    source = SourceConfig(
+        provider=ATSProvider.ASHBY,
+        company_name="Acme",
+        slug="acme",
+        board_url="https://jobs.ashbyhq.com/acme",
+        api_url="https://api.ashbyhq.com/posting-api/job-board/acme",
+    )
+    calls = 0
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        jobs = await AshbyConnector(client, source).fetch_jobs()
+    assert jobs[0].title == "Engineer"
+
+
+@pytest.mark.asyncio
 async def test_index_methods_and_orchestrator_are_additive(monkeypatch, db_session):
     async def fake_fetch(client, url, **kwargs):
         if "collinfo" in url:
@@ -132,6 +168,26 @@ async def test_index_methods_and_orchestrator_are_additive(monkeypatch, db_sessi
         assert await methods.wayback_candidates(client, ATSProvider.GREENHOUSE, max_rows=2)
         assert await methods.common_crawl_candidates(client, ATSProvider.GREENHOUSE, max_pages=1)
         assert await methods.urlscan_candidates(client, ATSProvider.GREENHOUSE)
+
+    page_calls = 0
+
+    async def paged_urlscan(client, url, **kwargs):
+        nonlocal page_calls
+        page_calls += 1
+        if "search_after=" in url:
+            payload = {"results": [], "has_more": False}
+        else:
+            payload = {
+                "results": [{"page": {"url": "https://boards.greenhouse.io/paged"}, "sort": [1, "cursor"]}],
+                "has_more": True,
+            }
+        return PublicResponse(200, {}, json.dumps(payload).encode(), 1)
+
+    monkeypatch.setattr(methods, "fetch_public", paged_urlscan)
+    stats: dict[str, int] = {}
+    async with httpx.AsyncClient() as client:
+        assert await methods.urlscan_candidates(client, ATSProvider.GREENHOUSE, stats=stats, max_pages=2)
+    assert page_calls == 4 and stats["raw"] == 2
 
     async def empty_index_fetch(client, url, **kwargs):
         return PublicResponse(200, {}, b"[]", 1)
@@ -155,6 +211,8 @@ async def test_index_methods_and_orchestrator_are_additive(monkeypatch, db_sessi
     )
     result = await discover_and_validate(db_session, providers={ATSProvider.GREENHOUSE}, methods={"manual"}, limit=1)
     assert result["validated_count"] == 1
+    cached = await discover_and_validate(db_session, providers={ATSProvider.GREENHOUSE}, methods={"manual"}, limit=1)
+    assert cached["candidate_count"] == 0 and cached["skipped_cached_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -204,6 +262,13 @@ def test_remote_country_matching_respects_geography():
     us_score, _, us_warnings = CandidateMatcher._country_match(candidate, us_only)
     assert european_score > 0 and european_reasons and not european_warnings
     assert us_score == 0 and us_warnings
+
+
+def test_source_cli_exposes_bounded_batch_and_force_options():
+    args = ingestion_cli._parser().parse_args(
+        ["sources", "discover", "--batch-size", "17", "--force", "--provider", "lever"]
+    )
+    assert args.batch_size == 17 and args.force and args.provider == ["lever"]
 
 
 @pytest.mark.asyncio

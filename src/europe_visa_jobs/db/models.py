@@ -30,6 +30,7 @@ class Source(Base):
         Index("ix_sources_status_enabled", "status", "enabled"),
         Index("ix_sources_provider_status", "provider", "status"),
         Index("ix_sources_enabled_verified_provider_board", "enabled", "verified_at", "provider", "board_identifier"),
+        Index("ix_sources_validation_state_retry_after", "validation_state", "retry_after"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -65,6 +66,11 @@ class Source(Base):
     last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_fetch_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    validation_state: Mapped[str] = mapped_column(String(30), default="discovered", nullable=False, index=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    failure_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    validation_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class DiscoveryRun(Base):
@@ -80,6 +86,11 @@ class DiscoveryRun(Base):
     invalid_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     provider_counts: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    candidate_before_filter_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    candidate_after_filter_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped_cached_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failure_breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    provider_failure_breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

@@ -29,6 +29,18 @@ class SourceStatus(StrEnum):
     UNVERIFIED = "unverified"
 
 
+class SourceValidationState(StrEnum):
+    """Durable state machine for candidate validation and retry scheduling."""
+
+    DISCOVERED = "discovered"
+    PENDING_VALIDATION = "pending_validation"
+    VERIFIED = "verified"
+    INVALID = "invalid"
+    TRANSIENT_FAILURE = "transient_failure"
+    BLOCKED = "blocked"
+    RETRY_LATER = "retry_later"
+
+
 class EligibilityStatus(StrEnum):
     ELIGIBLE = "eligible"
     REJECTED = "rejected"
@@ -118,6 +130,7 @@ class SourceValidation(BaseModel):
     error: str | None = None
     etag: str | None = None
     last_modified: str | None = None
+    failure_type: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -304,6 +317,10 @@ class CoverageRead(BaseModel):
     blocked_sources: int
     empty_sources: int
     disabled_sources: int
+    invalid_sources: int
+    retry_later_sources: int
+    transient_failure_sources: int
+    pending_sources: int
     sources_scanned_latest_run: int
     raw_jobs_scanned: int
     technical_jobs: int
@@ -338,6 +355,11 @@ class SourceHealthRead(BaseModel):
     last_http_status: int | None
     last_error_category: str | None
     last_error: str | None
+    validation_state: SourceValidationState
+    last_checked_at: datetime | None
+    retry_after: datetime | None
+    failure_type: str | None
+    validation_attempts: int
     model_config = ConfigDict(from_attributes=True)
 
 

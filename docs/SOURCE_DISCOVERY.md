@@ -12,14 +12,18 @@ The source catalog is a database registry, not a checked-in list. `config/source
 - urlscan public search (recent mode); and
 - previously verified registry entries.
 
+Recent urlscan results are cursor-paginated with a bounded page count. Full
+mode uses Wayback as the primary archive and retains Common Crawl as an
+additive/fallback index; index failures never get counted as dead boards.
+
 Unless `--provider` is supplied, the run considers every provider boundary in
 the registry: Greenhouse, Lever, Ashby, Workable, Personio, Teamtailor,
 Recruitee, SmartRecruiters, and Workday. Provider-scoped runs remain available
 for bounded tests and operational recovery.
 
-Archive and index URLs are candidates only. A candidate becomes enabled only after its provider-specific public response is validated. The database key is `(provider, board_identifier)`, so an archived job URL cannot create duplicate boards. A failed refresh never closes or deletes jobs: active jobs are closed only after a successful provider snapshot, while conditional 304 responses preserve the prior snapshot.
+Archive and index URLs are candidates only. A candidate becomes enabled only after its provider-specific public response is validated. The database key is `(provider, board_identifier)`, so an archived job URL cannot create duplicate boards. A failed refresh never closes or deletes jobs: active jobs are closed only after a successful provider snapshot, while conditional 304 responses preserve the prior snapshot. Cheap `HEAD` probes are used where providers support them; Workable and Ashby use provider-specific GET/hosted-page fallbacks when their public edges reject `HEAD` or the API edge.
 
-Common Crawl page results are retained when a later page token fails, and Wayback/index latency is recorded separately from source health. In the 2026-08-22 live exercise, Common Crawl returned 563 Greenhouse candidates, while a bounded 20-board validation sample returned twenty current HTTP 404 responses; none were promoted. Wayback's recent query timed out in the local network after returning the already-known three-board set.
+Common Crawl page results are retained when a later page token fails, and Wayback/index latency is recorded separately from source health. In the 2026-08-23 control, paginated urlscan returned 1,100 Greenhouse records and 117 unique candidates, 157 Lever records and 84 unique candidates, and 100 Ashby records and 66 unique candidates. Wayback and Common Crawl were unavailable at the connection layer in the local network; these index failures are explicit run errors, not source failures.
 
 ## Provider boundary
 
@@ -27,7 +31,21 @@ Greenhouse, Lever, Ashby, Workable, Personio, Recruitee, and SmartRecruiters hav
 
 ## Health and retry policy
 
-Discovery and connectors use bounded concurrency, request timeouts, retryable 429/5xx/network failures, Retry-After support, User-Agent identification, and ETag/Last-Modified cache validators. A Common Crawl collection endpoint is resolved once per discovery run and reused across providers. Validation results are checkpointed in configurable batches (`DISCOVERY_CHECKPOINT_SIZE`, default 100), so a long scan persists partial health evidence instead of holding one unbounded transaction. Common Crawl page breadth is configurable with `DISCOVERY_COMMON_CRAWL_MAX_PAGES`; bounded CI/live exercises can use fewer pages while scheduled full discovery uses the default 20. Sources transition through `unverified`, `healthy`, `empty`, `degraded`, `failing`, or `blocked`. Three consecutive failures disable a source for normal registry ingestion; `sources retry-failed` retries it explicitly. Static manual overrides remain auditable and are never silently replaced by an archive result.
+Discovery and connectors use bounded concurrency, request timeouts, retryable 429/5xx/network failures, Retry-After support, User-Agent identification, and ETag/Last-Modified cache validators. A Common Crawl collection endpoint is resolved once per discovery run and reused across providers. Validation results are checkpointed in configurable batches (`DISCOVERY_CHECKPOINT_SIZE`, default 100), so a long scan persists partial health evidence instead of holding one unbounded transaction. Common Crawl and urlscan page breadth are configurable; bounded CI/live exercises can use fewer pages while scheduled full discovery uses their defaults.
+
+Each source has a durable validation state: `discovered`, `pending_validation`,
+`verified`, `invalid`, `transient_failure`, `blocked`, or `retry_later`. The
+registry records `last_checked_at`, failure type, validation attempts, and
+`retry_after`. Permanent-looking 404s receive a long negative-cache deadline;
+network, timeout, and rate-limit failures are retried sooner; verified sources
+are rechecked only after their health deadline. This prevents repeated probes
+of permanent archive noise while preserving new and transient candidates.
+
+Operational health labels remain `unverified`, `healthy`, `empty`, `degraded`,
+`failing`, or `blocked` for compatibility with the existing API/UI. Three
+consecutive ingestion failures disable a source for normal registry ingestion;
+the validation lifecycle remains visible separately. Static manual overrides
+remain auditable and are never silently replaced by an archive result.
 
 ## Runbook
 

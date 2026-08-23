@@ -3,8 +3,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0004_source_registry"
-down_revision = "0003_candidate_job_tracking"
+revision = "0005_source_registry"
+down_revision = "0004_runtime_compatibility"
 branch_labels = None
 depends_on = None
 

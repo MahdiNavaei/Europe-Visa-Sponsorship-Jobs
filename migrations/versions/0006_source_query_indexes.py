@@ -1,14 +1,14 @@
 """Add composite indexes for registry and health queries.
 
-Revision ID: 0006_source_query_indexes
-Revises: 0005_cross_source_dedup
+Revision ID: 0007_source_query_indexes
+Revises: 0006_cross_source_dedup
 """
 
 from alembic import op
 
 
-revision = "0006_source_query_indexes"
-down_revision = "0005_cross_source_dedup"
+revision = "0007_source_query_indexes"
+down_revision = "0006_cross_source_dedup"
 branch_labels = None
 depends_on = None
 

@@ -58,6 +58,7 @@ async def fetch_public(
     etag: str | None = None,
     last_modified: str | None = None,
     retries: int | None = None,
+    timeout: float | None = None,
 ) -> PublicResponse:
     settings = get_settings()
     attempts = retries if retries is not None else settings.discovery_retry_attempts
@@ -75,7 +76,7 @@ async def fetch_public(
         response: httpx.Response | None = None
         category = "network"
         try:
-            response = await client.request(method, url, headers=request_headers, params=params)
+            response = await client.request(method, url, headers=request_headers, params=params, timeout=timeout)
             duration_ms = int((monotonic() - started) * 1000)
             if response.status_code == 304:
                 return PublicResponse(response.status_code, dict(response.headers), b"", duration_ms, True)

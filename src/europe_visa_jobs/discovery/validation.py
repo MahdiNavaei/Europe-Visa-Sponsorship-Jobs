@@ -50,21 +50,76 @@ def _rows(provider: ATSProvider, payload: Any) -> tuple[list[Any], str | None]:
     raise ValueError(f"{provider} requires a provider-specific validator")
 
 
-async def validate_candidate(client: httpx.AsyncClient, candidate: IdentifiedSource) -> SourceValidation:
+def _ashby_html_rows(body: bytes) -> tuple[list[Any], str | None]:
+    """Read Ashby's server-rendered board state when its API edge blocks us."""
+    text = body.decode("utf-8", "ignore")
+    marker = "window.__appData = "
+    start = text.find(marker)
+    if start < 0:
+        raise ValueError("ashby board HTML has no embedded app data")
+    start += len(marker)
+    end = text.find(";", start)
+    if end < 0:
+        raise ValueError("ashby board app data is not terminated")
+    payload = _json(text[start:end].encode("utf-8"))
+    board = payload.get("jobBoard") if isinstance(payload, dict) else None
+    rows = board.get("jobPostings") if isinstance(board, dict) else None
+    if not isinstance(rows, list):
+        raise ValueError("ashby board HTML has no jobPostings list")
+    organization = payload.get("organization") if isinstance(payload, dict) else None
+    company = organization.get("name") if isinstance(organization, dict) else None
+    return rows, company
+
+
+async def validate_candidate(
+    client: httpx.AsyncClient,
+    candidate: IdentifiedSource,
+    *,
+    probe_only: bool = False,
+) -> SourceValidation:
     endpoint = candidate.api_url or candidate.canonical_url
     try:
+        if probe_only and candidate.provider not in {ATSProvider.WORKDAY, ATSProvider.WORKABLE, ATSProvider.ASHBY}:
+            try:
+                public = await fetch_public(client, endpoint, method="HEAD")
+            except PublicFetchError as exc:
+                # A few hosted career pages reject HEAD even though their GET
+                # endpoint is public. Only fall back for method/transport-shaped
+                # errors; preserve real 404/403/429 evidence.
+                if exc.status_code not in {405, 501}:
+                    raise
+                public = await fetch_public(client, endpoint)
+            return SourceValidation(
+                valid=True,
+                provider=candidate.provider,
+                board_identifier=candidate.board_identifier,
+                canonical_url=candidate.canonical_url,
+                api_url=candidate.api_url,
+                http_status=public.status_code,
+                etag=public.headers.get("etag"),
+                last_modified=public.headers.get("last-modified"),
+                metadata={"duration_ms": public.duration_ms, "probe_only": True},
+            )
         if candidate.provider is ATSProvider.WORKDAY:
             response = await client.post(endpoint, json={"appliedFacets": {}, "limit": 1}, timeout=30)
             if response.status_code >= 400:
                 raise PublicFetchError(f"workday endpoint returned HTTP {response.status_code}", status_code=response.status_code, category="http_error")
             public = PublicResponse(response.status_code, dict(response.headers), response.content, 0)
         else:
-            public = await fetch_public(client, endpoint, params={"content": "false"} if candidate.provider is ATSProvider.GREENHOUSE else None)
+            try:
+                public = await fetch_public(client, endpoint, params={"content": "false"} if candidate.provider is ATSProvider.GREENHOUSE else None)
+            except PublicFetchError as exc:
+                if candidate.provider is not ATSProvider.ASHBY or exc.status_code != 403:
+                    raise
+                # Ashby's API is currently fronted by a Cloudflare policy that
+                # blocks this public service, while the hosted board renders the
+                # same public posting list in window.__appData.
+                public = await fetch_public(client, candidate.canonical_url)
         company_name: str | None = None
         count = 0
         if candidate.provider is ATSProvider.PERSONIO:
             root = ET.fromstring(public.body)
-            count = len(root.findall(".//position"))
+            count = sum(1 for item in root.iter() if item.tag.rsplit("}", 1)[-1].casefold() == "position")
         elif candidate.provider is ATSProvider.TEAMTAILOR:
             if b"job" not in public.body.lower():
                 raise ValueError("teamtailor response is not a recognizable careers page")
@@ -74,6 +129,9 @@ async def validate_candidate(client: httpx.AsyncClient, candidate: IdentifiedSou
             if not isinstance(payload, dict) or not isinstance(payload.get("jobPostings"), list):
                 raise ValueError("workday payload has no jobPostings list")
             count = len(payload["jobPostings"])
+        elif candidate.provider is ATSProvider.ASHBY and public.headers.get("content-type", "").lower().find("text/html") >= 0:
+            rows, company_name = _ashby_html_rows(public.body)
+            count = len(rows)
         else:
             rows, company_name = _rows(candidate.provider, _json(public.body))
             count = len(rows)
@@ -99,7 +157,30 @@ async def validate_candidate(client: httpx.AsyncClient, candidate: IdentifiedSou
             api_url=candidate.api_url,
             http_status=exc.status_code,
             error_category=exc.category,
+            failure_type=exc.category,
             error=str(exc),
+        )
+    except httpx.TimeoutException as exc:
+        return SourceValidation(
+            valid=False,
+            provider=candidate.provider,
+            board_identifier=candidate.board_identifier,
+            canonical_url=candidate.canonical_url,
+            api_url=candidate.api_url,
+            error_category="timeout",
+            failure_type="timeout",
+            error=str(exc) or "provider request timed out",
+        )
+    except httpx.NetworkError as exc:
+        return SourceValidation(
+            valid=False,
+            provider=candidate.provider,
+            board_identifier=candidate.board_identifier,
+            canonical_url=candidate.canonical_url,
+            api_url=candidate.api_url,
+            error_category="network",
+            failure_type="network",
+            error=str(exc) or "provider network error",
         )
     except (ValueError, ET.ParseError) as exc:
         return SourceValidation(
@@ -109,5 +190,6 @@ async def validate_candidate(client: httpx.AsyncClient, candidate: IdentifiedSou
             canonical_url=candidate.canonical_url,
             api_url=candidate.api_url,
             error_category="invalid_response",
+            failure_type="invalid_response",
             error=str(exc),
         )

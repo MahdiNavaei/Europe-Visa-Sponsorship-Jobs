@@ -37,10 +37,14 @@ def _parser() -> argparse.ArgumentParser:
     discover.add_argument("--provider", action="append", choices=[provider.value for provider in ATSProvider])
     discover.add_argument("--method", action="append", choices=("manual", "wayback", "common_crawl", "urlscan"))
     discover.add_argument("--limit", type=int, default=None)
+    discover.add_argument("--batch-size", type=int, default=None, help="Maximum due candidates validated in this run")
+    discover.add_argument("--force", action="store_true", help="Ignore retry deadlines for the selected candidates")
     discover.add_argument("--config", default="config/sources.json")
     validate = source_commands.add_parser("validate", help="Validate a bounded set of manual/registry candidates")
     validate.add_argument("--provider", action="append", choices=[provider.value for provider in ATSProvider])
     validate.add_argument("--limit", type=int, default=None)
+    validate.add_argument("--batch-size", type=int, default=None, help="Maximum due candidates validated in this run")
+    validate.add_argument("--force", action="store_true", help="Ignore retry deadlines for the selected candidates")
     validate.add_argument("--config", default="config/sources.json")
     health = source_commands.add_parser("health", help="Show source health and coverage")
     health.add_argument("--json", action="store_true")
@@ -143,7 +147,7 @@ def main() -> None:
             providers = {ATSProvider(item) for item in args.provider} if args.provider else None
             methods = set(args.method) if args.method else None
             with SessionLocal() as session:
-                result = asyncio.run(discover_and_validate(session, mode=args.mode, providers=providers, methods=methods, limit=args.limit, seed_path=args.config))
+                result = asyncio.run(discover_and_validate(session, mode=args.mode, providers=providers, methods=methods, limit=args.limit, batch_size=args.batch_size, force=args.force, seed_path=args.config))
             print(json.dumps(result, indent=2, default=str))
         elif args.source_command == "validate":
             providers = {ATSProvider(item) for item in args.provider} if args.provider else None
@@ -155,6 +159,8 @@ def main() -> None:
                         providers=providers,
                         methods={"manual"},
                         limit=args.limit,
+                        batch_size=args.batch_size,
+                        force=args.force,
                         seed_path=args.config,
                     )
                 )

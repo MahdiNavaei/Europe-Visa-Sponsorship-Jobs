@@ -6,8 +6,11 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 from europe_visa_jobs.schemas import ATSProvider, SourceCandidate, SourceConfig
 
-_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,120}$")
-_JUNK = {"api", "assets", "embed", "favicon.ico", "jobs", "job_app", "robots.txt", "static", "v1"}
+_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$")
+_JUNK = {
+    "_next", "api", "assets", "b", "css", "embed", "favicon.ico", "images", "img",
+    "jobs", "job_app", "js", "meeting", "robots.txt", "sitemap.xml", "static", "v1",
+}
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,22 @@ def normalize_identifier(value: str) -> str | None:
     return value.casefold()
 
 
+def plausible_identifier(provider: ATSProvider, value: str) -> bool:
+    """Reject archive noise before it becomes a network validation attempt.
+
+    The reference implementation found that archive paths contain JS/assets,
+    tracking fragments, UUIDs, and Ashby's internal ``root.*`` embed paths.  The
+    shape filter is intentionally conservative: a missed board can be recovered
+    by a seed or a later index, while probing obvious noise wastes provider quota.
+    """
+    normalized = normalize_identifier(value)
+    if normalized is None or normalized in _JUNK:
+        return False
+    if provider is ATSProvider.ASHBY and normalized.startswith("root."):
+        return False
+    return not re.fullmatch(r"[0-9a-f-]{30,}", normalized)
+
+
 def _host_matches(host: str, pattern: str) -> bool:
     return host == pattern or host.endswith(f".{pattern}")
 
@@ -68,13 +87,15 @@ def identify_source_url(url: str) -> IdentifiedSource | None:
         match = re.search(r"/v1/boards/([^/]+)|/(?!embed/)([^/]+)", path, re.I)
         identifier = normalize_identifier((match.group(1) or match.group(2)) if match else "")
         if identifier:
-            return IdentifiedSource(ATSProvider.GREENHOUSE, identifier, _clean_url(parts, f"/boards/{identifier}"), f"https://boards-api.greenhouse.io/v1/boards/{identifier}/jobs")
+            return IdentifiedSource(ATSProvider.GREENHOUSE, identifier, f"https://boards.greenhouse.io/{identifier}", f"https://boards-api.greenhouse.io/v1/boards/{identifier}/jobs")
 
     if host in {"jobs.lever.co", "jobs.eu.lever.co", "api.lever.co", "api.eu.lever.co"}:
         match = re.match(r"/([^/]+)", path)
         identifier = normalize_identifier(match.group(1) if match else "")
         if identifier:
-            return IdentifiedSource(ATSProvider.LEVER, identifier, f"https://jobs.lever.co/{identifier}", f"https://api.lever.co/v0/postings/{identifier}", {"region": "eu" if host == "jobs.eu.lever.co" else ""})
+            region = "eu" if host == "jobs.eu.lever.co" else ""
+            api_host = "api.eu.lever.co" if region else "api.lever.co"
+            return IdentifiedSource(ATSProvider.LEVER, identifier, f"https://{host}/{identifier}", f"https://{api_host}/v0/postings/{identifier}", {"region": region})
 
     if host in {"jobs.ashbyhq.com", "api.ashbyhq.com"}:
         match = re.search(r"/job-board/([^/]+)|/(?!job-board/)([^/]+)", path, re.I)
@@ -86,7 +107,7 @@ def identify_source_url(url: str) -> IdentifiedSource | None:
         match = re.match(r"/(?!j/|api/)([^/]+)", path, re.I)
         identifier = normalize_identifier(match.group(1) if match else "")
         if identifier:
-            return IdentifiedSource(ATSProvider.WORKABLE, identifier, f"https://apply.workable.com/{identifier}", f"https://apply.workable.com/api/v3/accounts/{identifier}/jobs")
+            return IdentifiedSource(ATSProvider.WORKABLE, identifier, f"https://apply.workable.com/{identifier}", f"https://apply.workable.com/api/v1/widget/accounts/{identifier}")
 
     if host.endswith(".jobs.personio.com") or host.endswith(".jobs.personio.de"):
         identifier = normalize_identifier(host.split(".")[0])

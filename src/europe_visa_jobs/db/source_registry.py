@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from europe_visa_jobs.schemas import (
     SourceConfig,
     SourceStatus,
     SourceValidation,
+    SourceValidationState,
 )
 from europe_visa_jobs.utils import EUROPEAN_COUNTRIES, normalize_company_name, normalize_country
 
@@ -22,6 +23,19 @@ class SourceRegistry:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    @staticmethod
+    def _retry_policy(validation: SourceValidation, now: datetime) -> tuple[str, datetime]:
+        category = validation.failure_type or validation.error_category or "unknown"
+        if category == "not_found" or validation.http_status == 404:
+            return SourceValidationState.INVALID.value, now + timedelta(days=30)
+        if category == "blocked" or validation.http_status == 403:
+            return SourceValidationState.BLOCKED.value, now + timedelta(days=14)
+        if category in {"rate_limited", "timeout", "network", "server_error"} or validation.http_status == 429:
+            return SourceValidationState.RETRY_LATER.value, now + timedelta(hours=1)
+        if category in {"invalid_response", "endpoint_error", "http_error", "validation_exception"}:
+            return SourceValidationState.TRANSIENT_FAILURE.value, now + timedelta(hours=6)
+        return SourceValidationState.TRANSIENT_FAILURE.value, now + timedelta(hours=1)
 
     def upsert_candidate(
         self,
@@ -50,6 +64,7 @@ class SourceRegistry:
                 discovery_method=candidate.discovery_method,
                 discovered_at=now,
                 status=SourceStatus.UNVERIFIED.value,
+                validation_state=SourceValidationState.DISCOVERED.value,
                 enabled=enabled,
                 manual_override=manual_override,
                 source_metadata=dict(candidate.metadata),
@@ -71,12 +86,49 @@ class SourceRegistry:
         self.session.flush()
         return source
 
+    def mark_pending(self, source: Source) -> None:
+        source.validation_state = SourceValidationState.PENDING_VALIDATION.value
+        self.session.flush()
+
+    def should_validate(self, source: Source, *, now: datetime | None = None, force: bool = False) -> bool:
+        if force:
+            return True
+        now = now or datetime.now(UTC)
+        retry_after = source.retry_after
+        if retry_after is not None and retry_after.tzinfo is None:
+            retry_after = retry_after.replace(tzinfo=UTC)
+        if retry_after is not None and retry_after > now:
+            return False
+        if source.validation_state in {
+            SourceValidationState.DISCOVERED.value,
+            SourceValidationState.PENDING_VALIDATION.value,
+            SourceValidationState.RETRY_LATER.value,
+            SourceValidationState.TRANSIENT_FAILURE.value,
+            SourceValidationState.INVALID.value,
+            SourceValidationState.BLOCKED.value,
+        }:
+            return True
+        if source.validation_state == SourceValidationState.VERIFIED.value:
+            if source.last_checked_at is None:
+                return True
+            checked_at = source.last_checked_at
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=UTC)
+            return checked_at <= now - timedelta(days=7)
+        return source.verified_at is None
+
     def import_config(self, config: SourceConfig) -> Source:
+        # Normalize manually configured board URLs through the same provider
+        # canonicalizer used by archive candidates. This prevents ``Clera`` and
+        # ``clera`` (or a careers URL and its API URL) becoming duplicate rows.
+        from europe_visa_jobs.discovery.patterns import identify_config
+
+        identified = identify_config(config)
         candidate = SourceCandidate(
             provider=config.provider,
-            board_identifier=config.board_identifier,
-            canonical_url=config.board_url or config.careers_url or "",
-            api_url=config.api_url,
+            board_identifier=identified.board_identifier,
+            canonical_url=identified.canonical_url,
+            api_url=identified.api_url,
             company_name=config.company_name,
             country_hint=config.default_country,
             discovery_method=config.discovery_method,
@@ -139,14 +191,20 @@ class SourceRegistry:
 
     def record_validation(self, source: Source, validation: SourceValidation, *, run_id: int | None = None) -> None:
         now = datetime.now(UTC)
+        source.last_checked_at = now
+        source.validation_attempts += 1
         source.last_health_check_at = now
         source.last_http_status = validation.http_status
-        source.last_error_category = validation.error_category
+        source.failure_type = validation.failure_type or validation.error_category
+        source.last_error_category = validation.failure_type or validation.error_category
         source.last_error = validation.error
         source.last_fetch_duration_ms = int(validation.metadata.get("duration_ms", 0)) or source.last_fetch_duration_ms
         source.etag = validation.etag or source.etag
         source.last_modified = validation.last_modified or source.last_modified
         if validation.valid:
+            source.validation_state = SourceValidationState.VERIFIED.value
+            source.retry_after = now + timedelta(days=7)
+            source.failure_type = None
             source.verified_at = source.verified_at or now
             source.last_success_at = now
             source.consecutive_failures = 0
@@ -155,10 +213,16 @@ class SourceRegistry:
             source.company_name = validation.company_name or source.company_name
             source.normalized_company_name = normalize_company_name(source.company_name or "") or source.normalized_company_name
         else:
+            state, retry_after = self._retry_policy(validation, now)
+            source.validation_state = state
+            source.retry_after = retry_after
             source.last_failure_at = now
             source.consecutive_failures += 1
-            if validation.http_status == 403:
+            if state == SourceValidationState.BLOCKED.value:
                 source.status = SourceStatus.BLOCKED.value
+                source.enabled = False
+            elif state == SourceValidationState.INVALID.value:
+                source.status = SourceStatus.DISABLED.value
                 source.enabled = False
             elif source.consecutive_failures >= 3:
                 source.status = SourceStatus.FAILING.value
@@ -251,6 +315,10 @@ class SourceRegistry:
             "blocked_sources": status_counts[SourceStatus.BLOCKED.value],
             "empty_sources": status_counts[SourceStatus.EMPTY.value],
             "disabled_sources": status_counts[SourceStatus.DISABLED.value],
+            "invalid_sources": sum(source.validation_state == SourceValidationState.INVALID.value for source in sources),
+            "retry_later_sources": sum(source.validation_state == SourceValidationState.RETRY_LATER.value for source in sources),
+            "transient_failure_sources": sum(source.validation_state == SourceValidationState.TRANSIENT_FAILURE.value for source in sources),
+            "pending_sources": sum(source.validation_state in {SourceValidationState.DISCOVERED.value, SourceValidationState.PENDING_VALIDATION.value} for source in sources),
             "sources_scanned_latest_run": int(sources_scanned),
             "raw_jobs_scanned": sum(source.raw_job_count for source in sources),
             "last_refresh_at": latest_refresh,
