@@ -267,7 +267,9 @@ test("personalized jobs send server filters, sorting and pagination parameters",
   await expect.poll(() => sawFilteredRequest).toBe(true);
   await expect(page.getByText("Filtered Senior AI Engineer")).toBeVisible();
 
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  const nextPage = page.getByRole("button", { name: "Next", exact: true });
+  await expect(nextPage).toBeEnabled();
+  await nextPage.click();
   await expect.poll(() => sawNextPage).toBe(true);
   await expect(page.getByText("AI Platform Engineer")).toBeVisible();
 });
