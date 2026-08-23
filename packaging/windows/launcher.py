@@ -50,6 +50,7 @@ def configure_runtime(data_dir: Path) -> Path:
     db_path = data_dir / "career-radar.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
     os.environ["WEB_ORIGIN"] = f"http://127.0.0.1:{WEB_PORT}"
+    os.environ["CAREERRADAR_DATA_DIR"] = str(data_dir)
     os.environ.setdefault("LOG_LEVEL", "WARNING")
     return db_path
 
@@ -125,6 +126,17 @@ def last_refresh_path(data_dir: Path) -> Path:
     return data_dir / "last-refresh.json"
 
 
+def _write_refresh_state(data_dir: Path, payload: dict[str, Any]) -> None:
+    path = last_refresh_path(data_dir)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def mark_refresh_started(data_dir: Path) -> None:
+    _write_refresh_state(data_dir, {"state": "syncing", "started_at": datetime.now(UTC).isoformat()})
+
+
 def refresh_due(data_dir: Path) -> bool:
     path = last_refresh_path(data_dir)
     if not path.is_file():
@@ -139,21 +151,38 @@ def refresh_due(data_dir: Path) -> bool:
         return True
 
 
-def mark_refreshed(data_dir: Path) -> None:
-    last_refresh_path(data_dir).write_text(
-        json.dumps({"completed_at": datetime.now(UTC).isoformat()}, indent=2),
-        encoding="utf-8",
-    )
+def mark_refreshed(data_dir: Path, *, manifest: Any = None, stats: dict[str, Any] | None = None) -> None:
+    completed_at = datetime.now(UTC).isoformat()
+    _write_refresh_state(data_dir, {
+        "state": "success",
+        "completed_at": completed_at,
+        "last_successful_sync": completed_at,
+        "dataset_version": getattr(manifest, "dataset_version", None),
+        "generated_at": getattr(manifest, "generated_at", None),
+        "sources_loaded": (stats or {}).get("sources_loaded"),
+        "jobs_loaded": (stats or {}).get("total_jobs"),
+        "partial_success": False,
+    })
+
+
+def mark_refresh_failed(data_dir: Path, error: BaseException) -> None:
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError):
+        previous = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+    previous.update({"state": "failed", "error": str(error)[:500]})
+    _write_refresh_state(data_dir, previous)
 
 
 def refresh_jobs(data_dir: Path) -> None:
     from europe_visa_jobs.db.locking import database_write_lock
+    from europe_visa_jobs.db.repository import Repository
     from europe_visa_jobs.db.session import SessionLocal
     from europe_visa_jobs.db.source_registry import SourceRegistry
     from europe_visa_jobs.ingestion.cli import _ingest
     from europe_visa_jobs.ingestion.sources import load_sources
     from europe_visa_jobs.ingestion.sponsors import import_production_sponsor_evidence
 
+    mark_refresh_started(data_dir)
     catalog_url = os.environ.get(
         "CAREERRADAR_CATALOG_MANIFEST_URL",
         "https://raw.githubusercontent.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/market-data/latest.json",
@@ -165,11 +194,14 @@ def refresh_jobs(data_dir: Path) -> None:
         from europe_visa_jobs.catalog import sync_catalog
         from europe_visa_jobs.db.session import SessionLocal
         with SessionLocal() as session:
-            sync_catalog(session, catalog_url, data_dir / "catalog-cache")
+            manifest = sync_catalog(session, catalog_url, data_dir / "catalog-cache")
             session.commit()
-        mark_refreshed(data_dir)
+            stats = Repository(session).stats()
+            stats["sources_loaded"] = len(SourceRegistry(session).list_sources(limit=100000))
+        mark_refreshed(data_dir, manifest=manifest, stats=stats)
         return
     except Exception as exc:
+        mark_refresh_failed(data_dir, exc)
         print(f"Central catalog sync unavailable; using local recovery path: {exc}")
 
     sources = bundle_dir() / "config" / "sources.json"
@@ -196,8 +228,15 @@ def refresh_jobs(data_dir: Path) -> None:
                 registry.import_config(config.model_copy(update={"manual_override": True}))
             session.commit()
         has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
-    asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
-    mark_refreshed(data_dir)
+    try:
+        asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
+        with SessionLocal() as session:
+            stats = Repository(session).stats()
+            stats["sources_loaded"] = len(SourceRegistry(session).list_sources(limit=100000))
+        mark_refreshed(data_dir, stats=stats)
+    except Exception as exc:
+        mark_refresh_failed(data_dir, exc)
+        raise
 
 
 def seed_smoke_data() -> None:

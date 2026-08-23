@@ -93,6 +93,24 @@ def test_api_cors_is_explicit_and_exposes_pagination_header():
     assert "access-control-allow-origin" not in denied.headers
 
 
+def test_catalog_status_is_read_only_and_safe_when_not_configured(monkeypatch):
+    monkeypatch.delenv("CAREERRADAR_DATA_DIR", raising=False)
+    response = TestClient(app).get("/api/v1/catalog/status")
+    assert response.status_code == 200
+    assert response.json() == {
+        "state": "not_started",
+        "started_at": None,
+        "completed_at": None,
+        "last_successful_sync": None,
+        "dataset_version": None,
+        "generated_at": None,
+        "sources_loaded": None,
+        "jobs_loaded": None,
+        "partial_success": False,
+        "error": None,
+    }
+
+
 def test_company_metrics_use_full_active_catalog_not_first_page(session_factory):
     with session_factory() as session:
         repo = Repository(session)

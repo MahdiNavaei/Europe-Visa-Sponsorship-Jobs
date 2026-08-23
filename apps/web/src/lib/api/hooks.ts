@@ -36,6 +36,10 @@ export function useCompanies(query = "", offset = 0) {
   return useQuery({ queryKey: ["companies", query, offset], queryFn: () => api.listCompanies(query, offset), staleTime: 60_000 });
 }
 
+export function useCatalogStatus() {
+  return useQuery({ queryKey: ["catalog-status"], queryFn: api.getCatalogStatus, staleTime: 15_000, refetchInterval: 30_000 });
+}
+
 export function useCompany(id: number) {
   return useQuery({ queryKey: ["company", id], queryFn: () => api.getCompany(id), enabled: Number.isFinite(id) && id > 0 });
 }

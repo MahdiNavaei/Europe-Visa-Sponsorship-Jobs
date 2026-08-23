@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 import uvicorn
@@ -19,6 +22,7 @@ from europe_visa_jobs.intelligence.ranking import JobRecommendation, RankingEngi
 from europe_visa_jobs.schemas import (
     CandidateCreate,
     CandidateRead,
+    CatalogSyncRead,
     CompanyIntelligenceRead,
     CompanyRead,
     CoverageRead,
@@ -88,6 +92,19 @@ SessionDep = Annotated[Session, Depends(get_db)]
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/v1/catalog/status", response_model=CatalogSyncRead)
+def catalog_status() -> CatalogSyncRead:
+    data_dir = os.environ.get("CAREERRADAR_DATA_DIR")
+    if not data_dir:
+        return CatalogSyncRead(state="not_started")
+    path = Path(data_dir) / "last-refresh.json"
+    try:
+        with path.open(encoding="utf-8") as stream:
+            return CatalogSyncRead.model_validate(json.load(stream))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return CatalogSyncRead(state="not_started")
 
 
 @app.get("/api/v1/countries")

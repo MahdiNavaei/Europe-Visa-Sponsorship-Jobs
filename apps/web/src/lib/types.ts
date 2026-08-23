@@ -89,6 +89,19 @@ export interface Stats {
   companies: number;
 }
 
+export interface CatalogSyncStatus {
+  state: "not_started" | "syncing" | "success" | "failed";
+  started_at?: string;
+  completed_at?: string;
+  last_successful_sync?: string;
+  dataset_version?: string | null;
+  generated_at?: string | null;
+  sources_loaded?: number | null;
+  jobs_loaded?: number | null;
+  partial_success?: boolean;
+  error?: string | null;
+}
+
 export interface Coverage {
   configured_sources: number;
   discovered_sources: number;

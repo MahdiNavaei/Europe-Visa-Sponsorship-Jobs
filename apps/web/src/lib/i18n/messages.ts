@@ -88,6 +88,11 @@ export const messages = {
       philosophy: "Data philosophy",
       unknownTitle: "When the evidence is weak, the platform says so.",
       unknownBody: "Unknown is better than a confident guess when relocation is on the line.",
+      syncing: "Updating the shared catalog…",
+      syncFailed: "Catalog update failed; cached jobs remain available.",
+      syncNotRecorded: "Catalog sync has not completed yet.",
+      lastSync: "Last successful catalog sync: {value}",
+      syncedJobs: "jobs loaded",
     },
     jobs: {
       eyebrow: "Opportunity index",
@@ -384,6 +389,11 @@ export const messages = {
       philosophy: "فلسفه داده",
       unknownTitle: "وقتی شواهد ضعیف است، پلتفرم صریح می‌گوید.",
       unknownBody: "وقتی پای جابه‌جایی در میان است، «نامشخص» بهتر از یک حدس مطمئن‌نماست.",
+      syncing: "کاتالوگ مشترک در حال به‌روزرسانی است…",
+      syncFailed: "به‌روزرسانی کاتالوگ ناموفق بود؛ فرصت‌های ذخیره‌شده در دسترس هستند.",
+      syncNotRecorded: "هنوز همگام‌سازی کاتالوگ با موفقیت کامل نشده است.",
+      lastSync: "آخرین همگام‌سازی موفق کاتالوگ: {value}",
+      syncedJobs: "فرصت بارگذاری‌شده",
     },
     jobs: {
       eyebrow: "فهرست فرصت‌ها",

@@ -311,6 +311,19 @@ class StatsRead(BaseModel):
     companies: int
 
 
+class CatalogSyncRead(BaseModel):
+    state: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    last_successful_sync: datetime | None = None
+    dataset_version: str | None = None
+    generated_at: datetime | None = None
+    sources_loaded: int | None = None
+    jobs_loaded: int | None = None
+    partial_success: bool = False
+    error: str | None = None
+
+
 class CoverageRead(BaseModel):
     configured_sources: int
     discovered_sources: int
