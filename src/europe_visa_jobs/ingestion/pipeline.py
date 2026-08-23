@@ -23,8 +23,6 @@ async def ingest_source(
     sponsor_registry: SponsorRegistryStore | None = None,
 ) -> IngestionRun:
     run = IngestionRun(provider=source.provider.value, source_slug=source.slug)
-    session.add(run)
-    session.flush()
     repo = Repository(session)
     registry = SourceRegistry(session)
     registry_source = registry.get(source.provider.value, source.slug) or registry.import_config(source)
@@ -34,6 +32,11 @@ async def ingest_source(
         try:
             fetched = await connector.fetch_jobs()
         except ConnectorNotModified:
+            # Do not open a SQLite write transaction while waiting on the
+            # provider network request. The run row is added after fetch so
+            # profile/tracking writes can proceed during slow refreshes.
+            session.add(run)
+            session.flush()
             response_headers = getattr(connector, "last_response_headers", {})
             fetch_duration_ms = getattr(connector, "last_fetch_duration_ms", 0)
             registry.record_validation(
@@ -58,6 +61,12 @@ async def ingest_source(
             session.commit()
             return run
         run.fetched_count = len(fetched)
+
+        # The connector fetch above is intentionally outside the transaction.
+        # In particular, the desktop refresh must not hold SQLite's writer
+        # lock across a slow or rate-limited ATS response.
+        session.add(run)
+        session.flush()
 
         technical_jobs = [job for job in fetched if is_supported_tech_role(job.title)]
         sponsor_store = sponsor_registry or SponsorRegistryStore(repo.sponsor_evidence_for_jobs(technical_jobs))
