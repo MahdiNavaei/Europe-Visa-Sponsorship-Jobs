@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import re
 import sys
 from collections.abc import Iterable
@@ -103,7 +104,7 @@ def netherlands_records(html_bytes: bytes | None = None) -> Iterable[tuple[str, 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", default="data/sponsors.csv")
+    parser.add_argument("--output", default="data/sponsors.csv.gz")
     parser.add_argument("--uk-csv", help="Previously downloaded current official UKVI CSV (for offline/reproducible generation)")
     parser.add_argument("--ind-html", help="Previously downloaded current official IND work-register HTML")
     args = parser.parse_args()
@@ -117,7 +118,8 @@ def main() -> None:
         raise RuntimeError("official sponsor registry generation produced no records")
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8", newline="") as handle:
+    opener = gzip.open if output.suffix.lower() == ".gz" else Path.open
+    with opener(output, "wt", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["company_name", "country", "registry_name", "source_url"])
         writer.writerows(records)

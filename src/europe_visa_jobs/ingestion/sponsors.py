@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,10 +16,16 @@ from europe_visa_jobs.utils import normalize_company_name
 _REQUIRED_COLUMNS = {"company_name", "country", "registry_name", "source_url"}
 
 
+def _open_csv(path: Path):
+    if path.suffix.lower() == ".gz":
+        return gzip.open(path, mode="rt", encoding="utf-8-sig", newline="")
+    return path.open(encoding="utf-8-sig", newline="")
+
+
 def import_sponsor_csv(session: Session, path: str | Path) -> int:
     repo = Repository(session)
     count = 0
-    with Path(path).open(encoding="utf-8-sig", newline="") as handle:
+    with _open_csv(Path(path)) as handle:
         reader = csv.DictReader(handle)
         missing = _REQUIRED_COLUMNS - set(reader.fieldnames or ())
         if missing:
@@ -45,7 +52,7 @@ def import_production_sponsor_evidence(session: Session, path: str | Path) -> in
     existing = session.scalar(select(func.count()).select_from(SponsorRecord)) or 0
     if existing:
         return 0
-    with source.open(encoding="utf-8-sig", newline="") as handle:
+    with _open_csv(source) as handle:
         reader = csv.DictReader(handle)
         missing = _REQUIRED_COLUMNS - set(reader.fieldnames or ())
         if missing:

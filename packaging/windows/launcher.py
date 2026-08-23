@@ -156,7 +156,7 @@ def refresh_jobs(data_dir: Path) -> None:
 
     sources = bundle_dir() / "config" / "sources.json"
     snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
-    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv"
+    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
     # The packaged catalog is a safe first-run seed. Once a source has been
     # validated, refreshes use the persistent registry and never regenerate a
     # web-scale discovery pass during desktop startup.
@@ -339,7 +339,7 @@ def smoke_test(data_dir: Path) -> int:
             bundle_dir() / "config" / "sources.json",
             bundle_dir() / "config" / "source-registry.snapshot.json",
             bundle_dir() / "data" / "skills.yaml",
-            bundle_dir() / "data" / "sponsors.csv",
+            bundle_dir() / "data" / "sponsors.csv.gz",
         )
         missing_resources = [str(path) for path in required_resources if not path.exists()]
         if missing_resources:

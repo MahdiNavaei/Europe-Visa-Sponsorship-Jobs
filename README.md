@@ -44,7 +44,7 @@ A company appearing in a sponsor register is **not** enough to approve every vac
 - Country inference and normalized job identity
 - Visa, relocation, international-candidate, and hard-restriction detection
 - Country-specific immigration rule registry
-- Official UKVI and IND sponsor-registry evidence cache, loaded before production eligibility analysis
+- Compressed official UKVI and IND sponsor-registry evidence cache, loaded before production eligibility analysis
 - Strict `eligible / rejected / unknown` eligibility states
 - Candidate profiles and deterministic skill ontology
 - Explainable candidate/job matching and ranking

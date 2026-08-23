@@ -1,6 +1,6 @@
 # Production sponsor evidence
 
-`sponsors.csv` is generated, not hand-maintained. It contains only the fields
+`sponsors.csv.gz` is generated, not hand-maintained. It contains only the fields
 needed for strict company-name matching:
 
 - company name;
@@ -14,7 +14,7 @@ The 2026-08-23 artifact was generated with:
 python scripts/build_sponsor_registry.py `
   --uk-csv build/ukvi-workers.csv `
   --ind-html build/ind-work-register.html `
-  --output data/sponsors.csv
+  --output data/sponsors.csv.gz
 ```
 
 The inputs are current downloads from the official [UKVI worker sponsor
