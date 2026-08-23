@@ -160,21 +160,25 @@ def refresh_jobs(data_dir: Path) -> None:
     # The packaged catalog is a safe first-run seed. Once a source has been
     # validated, refreshes use the persistent registry and never regenerate a
     # web-scale discovery pass during desktop startup.
-    with database_write_lock(os.environ["DATABASE_URL"]):
-        with SessionLocal() as session:
-            registry = SourceRegistry(session)
-            import_production_sponsor_evidence(session, sponsor_evidence)
-            if not registry.list_sources():
-                # A release package must include this generated artifact.  It is
-                # validated for 500+ live boards before import, so first launch is
-                # useful without starting a web-scale crawl.
-                for config in load_sources(snapshot, minimum_snapshot_sources=500):
-                    registry.import_verified_snapshot(config)
-                for config in load_sources(sources):
-                    registry.import_config(config.model_copy(update={"manual_override": True}))
-                session.commit()
-            has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
-        asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
+    # Keep the cross-process lock around the short bootstrap transaction only.
+    # _ingest opens one short DB transaction per source, but performs network
+    # fetches between those transactions. Holding this lock across the entire
+    # first-run refresh made profile saves wait until the full source batch
+    # completed and eventually fail with SQLite's busy timeout.
+    with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+        registry = SourceRegistry(session)
+        import_production_sponsor_evidence(session, sponsor_evidence)
+        if not registry.list_sources():
+            # A release package must include this generated artifact.  It is
+            # validated for 500+ live boards before import, so first launch is
+            # useful without starting a web-scale crawl.
+            for config in load_sources(snapshot, minimum_snapshot_sources=500):
+                registry.import_verified_snapshot(config)
+            for config in load_sources(sources):
+                registry.import_config(config.model_copy(update={"manual_override": True}))
+            session.commit()
+        has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
+    asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
     mark_refreshed(data_dir)
 
 
