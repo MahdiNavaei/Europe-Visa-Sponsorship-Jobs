@@ -76,10 +76,13 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _safe_ingestion_concurrency(settings) -> int:
-    # SQLite serializes writers; Postgres can use the configured bounded fan-out.
-    database_url = getattr(settings, "database_url", "")
+    # SQLite serializes writers, but each ingest task fetches its ATS payload
+    # before doing synchronous database work. Bounded fan-out therefore keeps
+    # slow public fetches from turning the durable branch-backed fallback into
+    # a serial 30-minute batch; the synchronous writes still run one at a time
+    # on the event loop.
     configured = getattr(settings, "ingestion_concurrency", 1)
-    return 1 if database_url.startswith("sqlite") else max(1, configured)
+    return max(1, configured)
 
 
 async def _ingest(

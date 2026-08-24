@@ -32,6 +32,12 @@ def mock_client(payload, *, status=200, content_type="application/json"):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
+def test_sqlite_ingestion_uses_bounded_fetch_fanout():
+    settings = type("Settings", (), {"database_url": "sqlite:///tmp.db", "ingestion_concurrency": 4})()
+
+    assert ingestion_cli._safe_ingestion_concurrency(settings) == 4
+
+
 @pytest.mark.asyncio
 async def test_additional_provider_connectors_normalize_public_shapes(monkeypatch):
     monkeypatch.setattr(
