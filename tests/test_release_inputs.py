@@ -45,3 +45,4 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "sqlite:///./source-health.sqlite" not in health
     assert "validate_release_inputs.py --require-snapshot --require-input-hashes" in windows
     assert "windows_market_cycle_smoke.py" in windows
+    assert "timeout-minutes: 60" in daily
