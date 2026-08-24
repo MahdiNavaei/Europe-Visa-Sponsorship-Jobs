@@ -135,7 +135,11 @@ export function OnboardingPage() {
       isEditing && candidateId !== null
         ? await updateMutation.mutateAsync({ id: candidateId, input: values })
         : await createMutation.mutateAsync(values);
-    setCandidateId(candidate.id);
+    if ("access_token" in candidate && typeof candidate.access_token === "string") {
+      setCandidateId(candidate.id, candidate.access_token);
+    } else if (!isEditing) {
+      setCandidateId(candidate.id);
+    }
     router.push(`/${locale}/dashboard`);
   };
 

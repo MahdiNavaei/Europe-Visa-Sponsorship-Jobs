@@ -187,7 +187,7 @@ Visa and sponsorship results are deterministic, evidence-based signals. They are
 
 The packaged seed catalog remains explicit and auditable, but it is no longer the production source universe. Coverage grows through the persistent registry and bounded discovery workflows; `config/sources.json` is retained for bootstrap, priority sources, and deterministic fixtures.
 
-The v1.0.0 Windows binary is unsigned because the project does not have a
+The current v1 Windows binary is unsigned because the project does not have a
 code-signing certificate. Windows SmartScreen may therefore identify the
 publisher as unknown. The release must not be described as signed until
 Authenticode signing is actually configured.

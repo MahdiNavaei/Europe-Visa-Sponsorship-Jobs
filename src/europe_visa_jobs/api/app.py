@@ -9,18 +9,32 @@ from typing import Annotated
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs import __version__
+from europe_visa_jobs.api.observability import (
+    RequestMetrics,
+    configure_structured_logging,
+    observe_request,
+)
+from europe_visa_jobs.api.security import (
+    SlidingWindowRateLimiter,
+    authorize_candidate,
+    issue_candidate_token,
+)
 from europe_visa_jobs.api.tracking import router as tracking_router
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.session import get_db, init_db
 from europe_visa_jobs.db.source_registry import SourceRegistry
+from europe_visa_jobs.db.tracking import TrackingRepository
 from europe_visa_jobs.eligibility import CountryRulesRegistry
 from europe_visa_jobs.intelligence.company import CompanyIntelligenceScorer
 from europe_visa_jobs.intelligence.ranking import JobRecommendation, RankingEngine
 from europe_visa_jobs.schemas import (
     CandidateCreate,
+    CandidateCreated,
+    CandidateExport,
     CandidateRead,
     CatalogSyncRead,
     CompanyIntelligenceRead,
@@ -28,8 +42,8 @@ from europe_visa_jobs.schemas import (
     CoverageRead,
     EligibilityStatus,
     JobDetailRead,
-    JobRead,
     JobRecommendationRead,
+    JobSummaryRead,
     RecommendationExplanationRead,
     RecommendationScoresRead,
     SourceHealthRead,
@@ -52,6 +66,9 @@ app = FastAPI(
 )
 
 _settings = get_settings()
+configure_structured_logging(_settings.log_level)
+_request_metrics = RequestMetrics()
+_sensitive_limiter = SlidingWindowRateLimiter(requests=60, window_seconds=60)
 _allowed_origins = sorted(
     {
         origin
@@ -68,20 +85,53 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
-    expose_headers=["X-Total-Count"],
+    allow_headers=["Accept", "Content-Type", "X-Candidate-Token"],
+    expose_headers=["X-Total-Count", "Warning"],
     max_age=600,
 )
 
 
 @app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
+async def request_observability(request: Request, call_next):
+    return await observe_request(request, call_next, _request_metrics)
+
+
+def _apply_security_headers(response: Response) -> Response:
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     return response
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    if request.method in {"POST", "PUT", "PATCH"}:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > 1_048_576:
+                    return _apply_security_headers(
+                        Response(status_code=413, content="Request body too large")
+                    )
+            except ValueError:
+                return _apply_security_headers(
+                    Response(status_code=400, content="Invalid Content-Length")
+                )
+    if request.url.path.startswith(("/api/v1/candidates", "/api/v1/recommendations")):
+        peer = request.client.host if request.client else "unknown"
+        path_parts = request.url.path.split("/")
+        route_group = path_parts[3] if len(path_parts) > 3 else "api"
+        if not _sensitive_limiter.check(f"{peer}:{route_group}"):
+            return _apply_security_headers(
+                Response(
+                    status_code=429,
+                    content="Too many requests",
+                    headers={"Retry-After": "60"},
+                )
+            )
+    response = await call_next(request)
+    return _apply_security_headers(response)
 
 
 app.include_router(tracking_router)
@@ -92,6 +142,20 @@ SessionDep = Annotated[Session, Depends(get_db)]
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(_request_metrics.render(), media_type="text/plain; version=0.0.4")
+
+
+@app.get("/ready")
+def readiness(session: SessionDep) -> dict[str, str]:
+    try:
+        session.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database is unavailable") from exc
+    return {"status": "ready", "version": __version__}
 
 
 @app.get("/api/v1/catalog/status", response_model=CatalogSyncRead)
@@ -112,7 +176,7 @@ def countries() -> dict[str, list[str]]:
     return {"countries": CountryRulesRegistry().supported_countries()}
 
 
-@app.get("/api/v1/jobs", response_model=list[JobRead])
+@app.get("/api/v1/jobs", response_model=list[JobSummaryRead])
 def list_jobs(
     session: SessionDep,
     response: Response,
@@ -127,10 +191,10 @@ def list_jobs(
     sort: str = Query(default="newest", pattern="^(newest|visa)$"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-) -> list[JobRead]:
+) -> list[JobSummaryRead]:
     repo = Repository(session)
-    resolved_status = visa_status if visa_status is not None else status
-    browse_default = resolved_status is None
+    resolved_status = visa_status if visa_status is not None else status or EligibilityStatus.ELIGIBLE
+    browse_default = False
     resolved_family = job_family or category
     jobs = repo.list_jobs(
         country=country,
@@ -155,7 +219,7 @@ def list_jobs(
             min_eligibility_score=min_visa_score,
         )
     )
-    return [JobRead.model_validate(item) for item in jobs]
+    return [JobSummaryRead.model_validate(item) for item in jobs]
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobDetailRead)
@@ -217,7 +281,7 @@ def company_intelligence(
         active_jobs=repo.count_company_jobs(company_id),
         eligible_jobs=eligible_jobs,
         jobs_total=len(all_jobs),
-        jobs=[JobRead.model_validate(job) for job in jobs],
+        jobs=[JobSummaryRead.model_validate(job) for job in jobs],
     )
 
 
@@ -240,7 +304,16 @@ def source_health(
 ) -> list[SourceHealthRead]:
     statuses = {status} if status else None
     sources = SourceRegistry(session).list_sources(statuses=statuses, limit=limit)
-    return [SourceHealthRead.model_validate(item) for item in sources]
+    return [
+        SourceHealthRead.model_validate(item).model_copy(
+            update={
+                "enumeration_completeness": (item.source_metadata or {}).get(
+                    "enumeration_completeness", "unknown"
+                )
+            }
+        )
+        for item in sources
+    ]
 
 
 def _recommendation_read(item: JobRecommendation) -> JobRecommendationRead:
@@ -272,36 +345,75 @@ def _recommendation_read(item: JobRecommendation) -> JobRecommendationRead:
         reasons=match.reasons,
         warnings=match.warnings,
         explanation=[*match.reasons, *match.warnings],
-        job=JobRead.model_validate(item.job),
+        job=JobSummaryRead.model_validate(item.job),
     )
 
 
-@app.post("/api/v1/candidates", response_model=CandidateRead, status_code=201)
-@app.post("/candidates", response_model=CandidateRead, status_code=201, include_in_schema=False)
-def create_candidate(candidate: CandidateCreate, session: SessionDep) -> CandidateRead:
-    item = Repository(session).create_candidate(candidate)
+@app.post("/api/v1/candidates", response_model=CandidateCreated, status_code=201)
+@app.post("/candidates", response_model=CandidateCreated, status_code=201, include_in_schema=False)
+def create_candidate(candidate: CandidateCreate, session: SessionDep) -> CandidateCreated:
+    token, token_hash = issue_candidate_token()
+    item = Repository(session).create_candidate(candidate, access_token_hash=token_hash)
     session.commit()
-    return CandidateRead.model_validate(item)
+    return CandidateCreated(**CandidateRead.model_validate(item).model_dump(), access_token=token)
 
 
 @app.get("/api/v1/candidates/{candidate_id}", response_model=CandidateRead)
 @app.get("/candidates/{candidate_id}", response_model=CandidateRead, include_in_schema=False)
-def get_candidate(candidate_id: int, session: SessionDep) -> CandidateRead:
+def get_candidate(candidate_id: int, session: SessionDep, request: Request, response: Response) -> CandidateRead:
     item = Repository(session).get_candidate(candidate_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, item)
     return CandidateRead.model_validate(item)
 
 
 @app.put("/api/v1/candidates/{candidate_id}", response_model=CandidateRead)
-def update_candidate(candidate_id: int, candidate: CandidateCreate, session: SessionDep) -> CandidateRead:
+def update_candidate(candidate_id: int, candidate: CandidateCreate, session: SessionDep, request: Request, response: Response) -> CandidateRead:
     repo = Repository(session)
     item = repo.get_candidate(candidate_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, item)
     updated = repo.update_candidate(item, candidate)
     session.commit()
     return CandidateRead.model_validate(updated)
+
+
+@app.get("/api/v1/candidates/{candidate_id}/export", response_model=CandidateExport)
+def export_candidate(candidate_id: int, session: SessionDep, request: Request, response: Response) -> CandidateExport:
+    candidate = Repository(session).get_candidate(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, candidate)
+    states = TrackingRepository(session).list(candidate_id)
+    return CandidateExport(
+        candidate=CandidateRead.model_validate(candidate),
+        job_states=[
+            {
+                "job_id": item.job_id,
+                "saved": item.saved,
+                "application_status": item.application_status,
+                "note": item.note,
+                "created_at": item.created_at.isoformat(),
+                "updated_at": item.updated_at.isoformat(),
+            }
+            for item in states
+        ],
+    )
+
+
+@app.delete("/api/v1/candidates/{candidate_id}", status_code=204)
+def delete_candidate(candidate_id: int, session: SessionDep, request: Request, response: Response) -> Response:
+    repo = Repository(session)
+    candidate = repo.get_candidate(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, candidate)
+    repo.delete_candidate(candidate)
+    session.commit()
+    response.status_code = 204
+    return response
 
 
 def _rank_recommendations(
@@ -316,11 +428,14 @@ def _rank_recommendations(
     min_score: float,
     include_unknown: bool,
     sort: str,
+    request: Request,
+    response: Response,
 ) -> tuple[list[JobRecommendation], int]:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, candidate)
     engine = RankingEngine()
     jobs = repo.list_recommendation_jobs(
         include_unknown=include_unknown,
@@ -357,11 +472,12 @@ def _rank_recommendations(
 
 
 @app.get("/api/v1/recommendations/{candidate_id}/jobs/{job_id}", response_model=JobRecommendationRead)
-def recommendation_for_job(candidate_id: int, job_id: int, session: SessionDep) -> JobRecommendationRead:
+def recommendation_for_job(candidate_id: int, job_id: int, session: SessionDep, request: Request, response: Response) -> JobRecommendationRead:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, candidate)
     job = repo.get_job(job_id)
     if job is None or not job.active:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -374,13 +490,14 @@ def recommendations(
     candidate_id: int,
     session: SessionDep,
     response: Response,
+    request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     country: str | None = None,
     role: str | None = None,
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
-    include_unknown: bool = True,
+    include_unknown: bool = False,
     sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> list[JobRecommendationRead]:
     ranked, total = _rank_recommendations(
@@ -394,6 +511,8 @@ def recommendations(
         min_score=min_score,
         include_unknown=include_unknown,
         sort=sort,
+        request=request,
+        response=response,
     )
     response.headers["X-Total-Count"] = str(total)
     return [_recommendation_read(item) for item in ranked]
@@ -405,19 +524,21 @@ def explain_recommendations(
     candidate_id: int,
     session: SessionDep,
     response: Response,
+    request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     country: str | None = None,
     role: str | None = None,
     query: str | None = Query(default=None, max_length=200),
     min_score: float = Query(default=0, ge=0, le=100),
-    include_unknown: bool = True,
+    include_unknown: bool = False,
     sort: str = Query(default="match", pattern="^(match|newest|visa)$"),
 ) -> RecommendationExplanationRead:
     repo = Repository(session)
     candidate = repo.get_candidate(candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    authorize_candidate(request, response, candidate)
     engine = RankingEngine()
     ranked, total = _rank_recommendations(
         candidate_id,
@@ -430,6 +551,8 @@ def explain_recommendations(
         min_score=min_score,
         include_unknown=include_unknown,
         sort=sort,
+        request=request,
+        response=response,
     )
     response.headers["X-Total-Count"] = str(total)
     return RecommendationExplanationRead(

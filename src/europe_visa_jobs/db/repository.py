@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from europe_visa_jobs.db.models import Candidate, Company, Job, JobEvidence, SponsorRecord
@@ -71,22 +72,32 @@ class Repository:
         if quality == "untrusted":
             digest = hashlib.sha256(name.casefold().encode("utf-8")).hexdigest()[:12]
             normalized = f"untrusted {normalized or 'employer'} {digest}"
+        country_key = country or ""
         stmt = select(Company).where(
             Company.normalized_name == normalized,
-            Company.country == country,
+            Company.country_key == country_key,
         )
         company = self.session.scalar(stmt)
         if company is None:
-            company = Company(
-                name=name,
-                normalized_name=normalized,
-                country=country,
-                career_url=career_url,
-                sponsor_verified=sponsor_verified,
-                name_quality=quality,
-            )
-            self.session.add(company)
-            self.session.flush()
+            try:
+                with self.session.begin_nested():
+                    company = Company(
+                        name=name,
+                        normalized_name=normalized,
+                        country=country,
+                        country_key=country_key,
+                        career_url=career_url,
+                        sponsor_verified=sponsor_verified,
+                        name_quality=quality,
+                    )
+                    self.session.add(company)
+                    self.session.flush()
+            except IntegrityError:
+                # A concurrent ingestion may have inserted the same normalized
+                # employer while this transaction was waiting on the constraint.
+                company = self.session.scalar(stmt)
+                if company is None:
+                    raise
         else:
             company.name = name
             company.career_url = career_url or company.career_url
@@ -141,6 +152,7 @@ class Repository:
                 seniority=profile.seniority.value if profile.seniority else None,
                 eligibility_status=assessment.status.value,
                 eligibility_score=assessment.score,
+                eligibility_assessed_at=assessment.assessed_at,
                 classification_status=classification_status,
                 job_sponsorship_signal=_job_sponsorship_signal(assessment),
                 company_sponsor_status="verified_registry" if sponsor is not None else "not_found",
@@ -169,6 +181,7 @@ class Repository:
             job.seniority = profile.seniority.value if profile.seniority else None
             job.eligibility_status = assessment.status.value
             job.eligibility_score = assessment.score
+            job.eligibility_assessed_at = assessment.assessed_at
             job.classification_status = classification_status
             job.job_sponsorship_signal = _job_sponsorship_signal(assessment)
             job.company_sponsor_status = "verified_registry" if sponsor is not None else "not_found"
@@ -353,9 +366,10 @@ class Repository:
         )
         return self.session.scalars(stmt).unique().first()
 
-    def create_candidate(self, candidate: CandidateCreate) -> Candidate:
+    def create_candidate(self, candidate: CandidateCreate, *, access_token_hash: str | None = None) -> Candidate:
         ontology = SkillOntology()
         item = Candidate(
+            access_token_hash=access_token_hash,
             name=candidate.name,
             target_roles=list(dict.fromkeys(candidate.target_roles)),
             skills=ontology.normalize_skills(candidate.skills),
@@ -394,6 +408,10 @@ class Repository:
 
     def get_candidate_by_name(self, name: str) -> Candidate | None:
         return self.session.scalar(select(Candidate).where(Candidate.name == name))
+
+    def delete_candidate(self, item: Candidate) -> None:
+        self.session.delete(item)
+        self.session.flush()
 
     def list_companies(self, *, country: str | None = None, query: str | None = None, limit: int = 100, offset: int = 0) -> list[Company]:
         stmt = select(Company)

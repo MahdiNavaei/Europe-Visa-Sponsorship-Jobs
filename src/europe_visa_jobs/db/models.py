@@ -113,6 +113,7 @@ class Candidate(Base):
     __tablename__ = "candidates"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    access_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     target_roles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -129,12 +130,15 @@ class Candidate(Base):
 
 class Company(Base):
     __tablename__ = "companies"
-    __table_args__ = (UniqueConstraint("normalized_name", "country", name="uq_company_name_country"),)
+    __table_args__ = (
+        UniqueConstraint("normalized_name", "country_key", name="uq_company_name_country_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     country: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    country_key: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     career_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sponsor_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     name_quality: Mapped[str] = mapped_column(String(20), default="verified", nullable=False, index=True)
@@ -191,6 +195,7 @@ class Job(Base):
     seniority: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     eligibility_status: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     eligibility_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eligibility_assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)

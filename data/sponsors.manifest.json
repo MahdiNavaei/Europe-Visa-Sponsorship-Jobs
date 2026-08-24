@@ -1,0 +1,24 @@
+{
+  "country_counts": {
+    "Netherlands": 2952,
+    "United Kingdom": 127314
+  },
+  "dataset_sha256": "c82ef6e034363c33568ba0c3b31e03785d2dd6ce618206011a674032a16e20b4",
+  "format": "career-radar-sponsor-registry/v1",
+  "generated_at": "2026-08-23T00:00:00Z",
+  "record_count": 130266,
+  "sources": [
+    {
+      "input_sha256": null,
+      "note": "Official input hash was not retained by the documented 2026-08-23 offline build.",
+      "resolved_url": null,
+      "url": "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers"
+    },
+    {
+      "input_sha256": null,
+      "note": "Official input hash was not retained by the documented 2026-08-23 offline build.",
+      "resolved_url": "https://ind.nl/en/public-register-recognised-sponsors/public-register-work",
+      "url": "https://ind.nl/en/public-register-recognised-sponsors/public-register-work"
+    }
+  ]
+}

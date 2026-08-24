@@ -111,3 +111,15 @@ export function useCreateCandidate() {
 export function useUpdateCandidate() {
   return useMutation({ mutationFn: ({ id, input }: { id: number; input: CandidateInput }) => api.updateCandidate(id, input) });
 }
+
+export function useExportCandidate() {
+  return useMutation({ mutationFn: (id: number) => api.exportCandidate(id) });
+}
+
+export function useDeleteCandidate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCandidate(id),
+    onSuccess: () => queryClient.clear(),
+  });
+}

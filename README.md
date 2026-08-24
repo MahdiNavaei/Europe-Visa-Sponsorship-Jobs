@@ -2,7 +2,7 @@
 
 > Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship or relocation support.
 
-**Career Radar v1.1.1** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
+**Career Radar v1.1.4** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
 
 It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, inspectable, reproducible, and backed by stored evidence.
 
@@ -13,7 +13,7 @@ It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, i
 For most Windows users, no developer setup is needed.
 
 1. Open **GitHub Releases**.
-2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.1.exe`).
+2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.4.exe`).
 3. Install and launch **Career Radar**.
 
 The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
@@ -21,6 +21,7 @@ The Windows package bundles the Python backend runtime, the production Next.js s
 The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
 
 See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
+Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
 ## Why this project exists
 

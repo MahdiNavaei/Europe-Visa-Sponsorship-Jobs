@@ -270,7 +270,10 @@ export const messages = {
       system: "System",
       language: "Language and direction",
       trust: "Trust and privacy",
-      trustBody: "Your candidate identifier is stored locally in this browser. Career Radar does not add an LLM or external AI service to the matching flow.",
+      trustBody: "Your profile is stored in Career Radar's database. This browser keeps an access token that protects it; the raw token is never stored by the API. Matching does not use an external AI service. You can export or permanently delete your data here.",
+      export: "Export my data",
+      delete: "Delete my profile",
+      deleteConfirm: "Permanently delete your profile and application tracking data?",
     },
     explanation: {
       buildFirst: "Build your profile first",
@@ -579,7 +582,10 @@ export const messages = {
       system: "سیستم",
       language: "زبان و جهت",
       trust: "اعتماد و حریم خصوصی",
-      trustBody: "شناسه پروفایل شما فقط در همین مرورگر ذخیره می‌شود. رادار شغلی هیچ LLM یا سرویس AI خارجی به فرایند تطابق اضافه نمی‌کند.",
+      trustBody: "پروفایل شما در پایگاه‌داده رادار شغلی نگهداری می‌شود. این مرورگر یک توکن دسترسی محافظ را ذخیره می‌کند و API هرگز توکن خام را نگه نمی‌دارد. تطابق از سرویس AI خارجی استفاده نمی‌کند. از همین‌جا می‌توانید داده‌ها را دریافت یا برای همیشه حذف کنید.",
+      export: "دریافت داده‌های من",
+      delete: "حذف پروفایل من",
+      deleteConfirm: "پروفایل و داده‌های پیگیری درخواست‌های شما برای همیشه حذف شوند؟",
     },
     explanation: {
       buildFirst: "ابتدا پروفایل بسازید",

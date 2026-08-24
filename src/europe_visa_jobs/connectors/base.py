@@ -9,6 +9,11 @@ from typing import Any
 import httpx
 
 from europe_visa_jobs.schemas import NormalizedJob, SourceConfig
+from europe_visa_jobs.utils.url_security import (
+    UnsafeUrlError,
+    validate_public_http_url,
+    validated_redirect,
+)
 
 
 class ConnectorError(RuntimeError):
@@ -53,7 +58,15 @@ class BaseConnector(ABC):
         for attempt in range(3):
             started = monotonic()
             try:
-                response = await self.client.get(url, headers=headers, **kwargs)
+                current_url = validate_public_http_url(url)
+                for _ in range(6):
+                    response = await self.client.get(current_url, headers=headers, follow_redirects=False, **kwargs)
+                    if response.is_redirect and response.headers.get("location"):
+                        current_url = validated_redirect(current_url, response.headers["location"])
+                        continue
+                    break
+                else:
+                    raise ConnectorError(f"{self.source.provider}: too many redirects", category="redirect")
                 self.last_response_headers = dict(response.headers)
                 self.last_fetch_duration_ms = int((monotonic() - started) * 1000)
                 if response.status_code == 304:
@@ -66,6 +79,8 @@ class BaseConnector(ABC):
                 await asyncio.sleep(min(2**attempt + random.uniform(0, 0.3), 30.0))
             except ConnectorError:
                 raise
+            except UnsafeUrlError as exc:
+                raise ConnectorError(f"{self.source.provider}: unsafe endpoint: {exc}", category="unsafe_url") from exc
             except httpx.TimeoutException as exc:
                 if attempt == 2:
                     raise ConnectorError(f"{self.source.provider}: timeout fetching {url}", category="timeout") from exc
@@ -75,3 +90,67 @@ class BaseConnector(ABC):
                     raise ConnectorError(f"{self.source.provider}: network failure fetching {url}: {exc}", category="network") from exc
                 await asyncio.sleep(min(2**attempt + random.uniform(0, 0.3), 30.0))
         raise ConnectorError(f"{self.source.provider}: failed to fetch {url}")
+
+    async def _post(self, url: str, **kwargs: Any) -> httpx.Response:
+        """POST to a public provider endpoint with the same SSRF boundary as GET.
+
+        Workday enumeration uses POST. Keeping this in the base adapter avoids
+        bypassing redirect and private-network checks in an individual connector.
+        """
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.setdefault(
+            "User-Agent",
+            "CareerRadar/1.0 (+https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs)",
+        )
+        try:
+            current_url = validate_public_http_url(url)
+            for _ in range(6):
+                response = await self.client.post(
+                    current_url,
+                    headers=headers,
+                    follow_redirects=False,
+                    **kwargs,
+                )
+                if response.is_redirect and response.headers.get("location"):
+                    current_url = validated_redirect(current_url, response.headers["location"])
+                    continue
+                break
+            else:
+                raise ConnectorError(
+                    f"{self.source.provider}: too many redirects",
+                    category="redirect",
+                )
+        except UnsafeUrlError as exc:
+            raise ConnectorError(
+                f"{self.source.provider}: unsafe endpoint: {exc}",
+                category="unsafe_url",
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise ConnectorError(
+                f"{self.source.provider}: timeout fetching {url}",
+                category="timeout",
+            ) from exc
+        except httpx.NetworkError as exc:
+            raise ConnectorError(
+                f"{self.source.provider}: network failure fetching {url}: {exc}",
+                category="network",
+            ) from exc
+        self.last_response_headers = dict(response.headers)
+        if response.status_code >= 400:
+            category = (
+                "rate_limited"
+                if response.status_code == 429
+                else "blocked"
+                if response.status_code in {401, 403}
+                else "not_found"
+                if response.status_code == 404
+                else "server_error"
+                if response.status_code >= 500
+                else "http_error"
+            )
+            raise ConnectorError(
+                f"{self.source.provider}: failed to fetch {url}: HTTP {response.status_code}",
+                status_code=response.status_code,
+                category=category,
+            )
+        return response

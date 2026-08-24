@@ -220,6 +220,39 @@ def test_registry_lifecycle_and_negative_cache(db_session):
     assert not registry.should_validate(source)
 
 
+def test_failed_source_retry_selection_respects_retry_after(db_session):
+    registry = SourceRegistry(db_session)
+    candidate = SourceCandidate(
+        provider=ATSProvider.LEVER,
+        board_identifier="rate-limited",
+        canonical_url="https://jobs.lever.co/rate-limited",
+        api_url="https://api.lever.co/v0/postings/rate-limited",
+        company_name="Rate Limited",
+        discovery_method="test",
+    )
+    source = registry.upsert_candidate(candidate)
+    registry.record_validation(
+        source,
+        SourceValidation(
+            valid=False,
+            provider=ATSProvider.LEVER,
+            board_identifier=source.board_identifier,
+            canonical_url=source.careers_url or candidate.canonical_url,
+            http_status=429,
+            error_category="rate_limited",
+            metadata={"retry_after_seconds": 7200},
+        ),
+    )
+    assert source.status == SourceStatus.DEGRADED.value
+    assert source.retry_after is not None
+    assert source.retry_after > datetime.now(UTC) + timedelta(minutes=119)
+    assert source not in registry.failed_sources()
+
+    source.retry_after = datetime.now(UTC) - timedelta(seconds=1)
+    db_session.flush()
+    assert source in registry.failed_sources()
+
+
 def test_import_config_canonicalizes_provider_case_and_endpoint(db_session):
     registry = SourceRegistry(db_session)
     source = registry.import_config(

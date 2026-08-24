@@ -99,9 +99,11 @@ async def ingest_source(
             stored += int(technical)
 
         completeness = getattr(connector, "completeness", "complete")
+        detail_completeness = getattr(connector, "detail_completeness", "complete")
         registry_source.source_metadata = {
             **(registry_source.source_metadata or {}),
             "enumeration_completeness": completeness,
+            "detail_completeness": detail_completeness,
         }
         if completeness == "complete":
             repo.mark_source_jobs_inactive_except(source.provider.value, source.slug, seen_ids)
@@ -120,7 +122,11 @@ async def ingest_source(
                 http_status=200,
                 etag=response_headers.get("etag"),
                 last_modified=response_headers.get("last-modified"),
-                metadata={"duration_ms": fetch_duration_ms, "completeness": completeness},
+                metadata={
+                    "duration_ms": fetch_duration_ms,
+                    "completeness": completeness,
+                    "detail_completeness": detail_completeness,
+                },
             ),
         )
         registry_source.etag = response_headers.get("etag") or registry_source.etag

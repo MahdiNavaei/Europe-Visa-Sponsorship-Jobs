@@ -34,6 +34,8 @@ def _parser() -> argparse.ArgumentParser:
     jobs.add_argument("--provider", action="append", choices=[provider.value for provider in ATSProvider], help="Limit registry ingestion to one or more providers")
     jobs.add_argument("--limit", type=int, default=None, help="Limit registry sources")
     jobs.add_argument("--largest-first", action="store_true", help="Prioritize verified un-ingested boards with the most recently observed jobs")
+    jobs.add_argument("--allow-partial", action="store_true", help="Return success after processing healthy sources even if some sources fail")
+    jobs.add_argument("--summary-file", help="Write a machine-readable batch result for publication/alerting")
 
     sponsors = subparsers.add_parser("sponsors", help="Import verified sponsor registry records")
     sponsors.add_argument("--file", required=True, help="CSV with company_name,country,registry_name,source_url")
@@ -68,6 +70,8 @@ def _parser() -> argparse.ArgumentParser:
     health.add_argument("--limit", type=int, default=100)
     retry = source_commands.add_parser("retry-failed", help="Retry only degraded, failing, or blocked sources")
     retry.add_argument("--limit", type=int, default=None)
+    retry.add_argument("--allow-partial", action="store_true", help="Write health evidence before a later workflow step reports remaining failures")
+    retry.add_argument("--summary-file", help="Write a machine-readable retry result")
     return parser
 
 
@@ -86,7 +90,9 @@ async def _ingest(
     providers: set[str] | None = None,
     limit: int | None = None,
     largest_first: bool = False,
-) -> None:
+    allow_partial: bool = False,
+    summary_file: str | None = None,
+) -> dict[str, object]:
     settings = get_settings()
     if registry_mode:
         with SessionLocal() as session:
@@ -120,18 +126,37 @@ async def _ingest(
 
         results = await asyncio.gather(*(ingest_one(source) for source in sources))
     failures: list[str] = []
+    successful = 0
     for source, run, error in results:
         if error is None:
+            successful += 1
             print(f"{source.provider.value}:{source.slug} fetched={run.fetched_count} stored={run.stored_count} status={run.status}")
         else:
             label = f"{source.provider.value}:{source.slug}"
             failures.append(label)
             print(f"{label} fetched=0 stored=0 status=failed error={str(error)[:300]}")
-    if failures:
+    summary: dict[str, object] = {
+        "sources_total": len(results),
+        "sources_successful": successful,
+        "sources_failed": len(failures),
+        "failed_sources": failures,
+        "partial_success": bool(failures and successful),
+    }
+    if summary_file:
+        output = Path(summary_file)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if failures and not allow_partial:
         raise RuntimeError(f"{len(failures)} source(s) failed after processing the full batch: {', '.join(failures)}")
+    return summary
 
 
-async def _ingest_failed(sources) -> None:
+async def _ingest_failed(
+    sources,
+    *,
+    allow_partial: bool = False,
+    summary_file: str | None = None,
+) -> dict[str, object]:
     settings = get_settings()
     timeout = httpx.Timeout(settings.request_timeout_seconds)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -148,15 +173,29 @@ async def _ingest_failed(sources) -> None:
 
         results = await asyncio.gather(*(ingest_one(source) for source in sources))
     failures: list[str] = []
+    successful = 0
     for source, run, error in results:
         if error is None:
+            successful += 1
             print(f"{source.provider.value}:{source.slug} fetched={run.fetched_count} stored={run.stored_count} status={run.status}")
         else:
             label = f"{source.provider.value}:{source.slug}"
             failures.append(label)
             print(f"{label} status=failed error={str(error)[:300]}")
-    if failures:
+    summary: dict[str, object] = {
+        "sources_total": len(results),
+        "sources_successful": successful,
+        "sources_failed": len(failures),
+        "failed_sources": failures,
+        "partial_success": bool(failures and successful),
+    }
+    if summary_file:
+        output = Path(summary_file)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if failures and not allow_partial:
         raise RuntimeError(f"{len(failures)} failed source(s) remain: {', '.join(failures)}")
+    return summary
 
 
 def _run(args: argparse.Namespace) -> None:
@@ -169,6 +208,8 @@ def _run(args: argparse.Namespace) -> None:
                 providers=set(args.provider) if args.provider else None,
                 limit=args.limit,
                 largest_first=args.largest_first,
+                allow_partial=args.allow_partial,
+                summary_file=args.summary_file,
             )
         )
     elif args.command == "sponsors":
@@ -253,7 +294,13 @@ def _run(args: argparse.Namespace) -> None:
             with SessionLocal() as session:
                 registry = SourceRegistry(session)
                 sources = [registry.to_config(item) for item in registry.failed_sources(limit=args.limit)]
-            asyncio.run(_ingest_failed(sources))
+            asyncio.run(
+                _ingest_failed(
+                    sources,
+                    allow_partial=args.allow_partial,
+                    summary_file=args.summary_file,
+                )
+            )
 
 
 def main() -> None:

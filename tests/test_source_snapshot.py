@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -64,6 +65,19 @@ def test_snapshot_rejects_small_or_unverified_records(db_session):
     payload["sources"][0]["metadata"]["snapshot_health"]["validation_state"] = "pending_validation"
     with pytest.raises(SnapshotValidationError, match="verified health"):
         validate_snapshot(payload, minimum_verified=1)
+
+
+def test_snapshot_rejects_stale_or_future_generation(db_session):
+    registry = SourceRegistry(db_session)
+    _verified_source(registry)
+    payload = build_snapshot(registry.list_sources(verified_only=True))
+    now = datetime.now(UTC)
+    payload["generated_at"] = (now - timedelta(days=15)).isoformat()
+    with pytest.raises(SnapshotValidationError, match="stale"):
+        validate_snapshot(payload, minimum_verified=1, now=now)
+    payload["generated_at"] = (now + timedelta(hours=1)).isoformat()
+    with pytest.raises(SnapshotValidationError, match="future"):
+        validate_snapshot(payload, minimum_verified=1, now=now)
 
 
 def test_snapshot_excludes_historically_verified_sources_no_longer_current(db_session):

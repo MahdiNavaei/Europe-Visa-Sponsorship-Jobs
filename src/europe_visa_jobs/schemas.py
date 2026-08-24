@@ -2,9 +2,35 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from ipaddress import ip_address
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _public_web_url(value: object) -> object:
+    if value is None or value == "":
+        return value
+    if not isinstance(value, str):
+        return value
+    candidate = value.strip()
+    parts = urlsplit(candidate)
+    if parts.scheme.casefold() not in {"http", "https"} or not parts.hostname:
+        raise ValueError("must be an absolute http(s) URL")
+    if parts.username or parts.password:
+        raise ValueError("URL credentials are not allowed")
+    hostname = parts.hostname.casefold().rstrip(".")
+    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("local hostnames are not allowed")
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if not address.is_global:
+            raise ValueError("non-public IP addresses are not allowed")
+    return candidate
 
 
 class ATSProvider(StrEnum):
@@ -102,6 +128,8 @@ class SourceConfig(BaseModel):
     manual_override: bool = False
     enabled: bool = True
 
+    _validate_urls = field_validator("careers_url", "board_url", "api_url", mode="before")(_public_web_url)
+
     @property
     def board_identifier(self) -> str:
         return self.slug
@@ -116,6 +144,8 @@ class SourceCandidate(BaseModel):
     country_hint: str | None = None
     discovery_method: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    _validate_urls = field_validator("canonical_url", "api_url", mode="before")(_public_web_url)
 
 
 class SourceValidation(BaseModel):
@@ -134,26 +164,30 @@ class SourceValidation(BaseModel):
     failure_type: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    _validate_urls = field_validator("canonical_url", "api_url", mode="before")(_public_web_url)
+
 
 class NormalizedJob(BaseModel):
-    external_id: str
+    external_id: str = Field(min_length=1, max_length=255)
     provider: ATSProvider
-    source_slug: str
-    company_name: str
-    title: str
-    description: str = ""
-    location: str = ""
+    source_slug: str = Field(min_length=1, max_length=255)
+    company_name: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="", max_length=1_000_000)
+    location: str = Field(default="", max_length=500)
     country: str | None = None
     department: str | None = None
     employment_type: str | None = None
     workplace_type: str | None = None
-    apply_url: str
+    apply_url: str = Field(max_length=4000)
     job_url: str | None = None
     posted_at: datetime | None = None
     job_family: JobFamily = JobFamily.OTHER
     raw: dict[str, Any] = Field(default_factory=dict, repr=False)
 
     model_config = ConfigDict(use_enum_values=False)
+
+    _validate_urls = field_validator("apply_url", "job_url", mode="before")(_public_web_url)
 
 
 class CandidateCreate(BaseModel):
@@ -189,6 +223,8 @@ class CandidateCreate(BaseModel):
     def reject_empty_items(cls, value: list[object]) -> list[object]:
         if any(isinstance(item, str) and not item for item in value):
             raise ValueError("list items must not be empty")
+        if any(isinstance(item, str) and len(item) > 255 for item in value):
+            raise ValueError("list items must be at most 255 characters")
         return value
 
 
@@ -198,6 +234,16 @@ class CandidateRead(CandidateCreate):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateCreated(CandidateRead):
+    access_token: str = Field(min_length=32, max_length=256)
+
+
+class CandidateExport(BaseModel):
+    candidate: CandidateRead
+    job_states: list[dict[str, Any]] = Field(default_factory=list)
+    exported_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Evidence(BaseModel):
@@ -236,7 +282,7 @@ class CompanySponsorEvidence(BaseModel):
     verified: bool = True
 
 
-class JobRead(BaseModel):
+class JobSummaryRead(BaseModel):
     id: int
     company_id: int
     external_id: str
@@ -244,7 +290,6 @@ class JobRead(BaseModel):
     source_slug: str
     company_name: str
     title: str
-    description: str
     location: str
     country: str | None
     department: str | None
@@ -260,12 +305,17 @@ class JobRead(BaseModel):
     seniority: SeniorityLevel | None = None
     eligibility_status: EligibilityStatus | None = None
     eligibility_score: int | None = None
+    eligibility_assessed_at: datetime | None = None
     classification_status: str = "classification_unknown"
     job_sponsorship_signal: str = "not_mentioned"
     company_sponsor_status: str = "unresolved"
     final_candidate_eligibility: str = "unknown"
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class JobRead(JobSummaryRead):
+    description: str
 
 
 class JobEvidenceRead(BaseModel):
@@ -303,7 +353,7 @@ class CompanyIntelligenceRead(BaseModel):
     active_jobs: int = Field(ge=0)
     eligible_jobs: int = Field(ge=0)
     jobs_total: int = Field(ge=0)
-    jobs: list[JobRead] = Field(default_factory=list)
+    jobs: list[JobSummaryRead] = Field(default_factory=list)
 
 
 class StatsRead(BaseModel):
@@ -390,6 +440,7 @@ class SourceHealthRead(BaseModel):
     retry_after: datetime | None
     failure_type: str | None
     validation_attempts: int
+    enumeration_completeness: str = "unknown"
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -424,7 +475,7 @@ class JobRecommendationRead(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     explanation: list[str] = Field(default_factory=list)
-    job: JobRead
+    job: JobSummaryRead
 
 
 class RecommendationExplanationRead(BaseModel):

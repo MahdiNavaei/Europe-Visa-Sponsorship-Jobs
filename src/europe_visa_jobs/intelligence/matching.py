@@ -67,10 +67,23 @@ class CandidateMatcher:
         missing_preferred = [skill for skill in preferred if skill.casefold() not in candidate_skills]
         required_coverage = self._coverage(len(matched_required), len(required))
         preferred_coverage = self._coverage(len(matched_preferred), len(preferred))
-        skill_score = 100 * (0.7 * required_coverage + 0.3 * preferred_coverage)
+        if required and preferred:
+            skill_score = 100 * (0.7 * required_coverage + 0.3 * preferred_coverage)
+        elif required:
+            skill_score = 100 * required_coverage
+        elif preferred:
+            skill_score = 100 * preferred_coverage
+        else:
+            # Missing requirements are unknown, not a perfect candidate match.
+            skill_score = 50.0
 
         seniority_match = self._seniority_match(candidate.seniority, profile.seniority)
-        experience_score = self._experience_match(candidate.years_of_experience, profile.min_experience_years, seniority_match)
+        experience_score = self._experience_match(
+            candidate.years_of_experience,
+            profile.min_experience_years,
+            seniority_match,
+            seniority_known=bool(candidate.seniority and profile.seniority),
+        )
         role_similarity = self._role_similarity(candidate.target_roles, job.title, profile.job_family)
         country_score, country_reasons, country_warnings = self._country_match(candidate, job)
         visa_score, visa_reasons, visa_warnings = self._visa_match(candidate, job)
@@ -82,6 +95,8 @@ class CandidateMatcher:
             reasons.append(f"Matched required skills: {', '.join(matched_required)}.")
         if missing:
             warnings.append(f"Missing required skills: {', '.join(missing)}.")
+        if not required and not preferred:
+            warnings.append("The vacancy did not publish enough skill requirements to assess skill fit.")
         if role_similarity >= 0.9:
             reasons.append("The role aligns with the candidate's target role family.")
         elif role_similarity < 0.5:
@@ -90,6 +105,8 @@ class CandidateMatcher:
             reasons.append("The role seniority matches the candidate profile.")
         elif profile.seniority:
             warnings.append("The role seniority differs from the candidate profile.")
+        if profile.min_experience_years is None and profile.seniority is None:
+            warnings.append("The vacancy did not publish enough experience requirements to assess experience fit.")
 
         return MatchResult(
             visa_score=visa_score,
@@ -128,19 +145,31 @@ class CandidateMatcher:
 
     @staticmethod
     def _coverage(matched: int, total: int) -> float:
-        return matched / total if total else 1.0
+        return matched / total if total else 0.5
 
     @staticmethod
     def _seniority_match(candidate_level: SeniorityLevel | str | None, job_level: SeniorityLevel | None) -> float:
         if not candidate_level or not job_level:
-            return 1.0
+            return 0.5
         candidate = SeniorityLevel(candidate_level)
         distance = abs(_LEVEL_ORDER[candidate] - _LEVEL_ORDER[job_level])
         return {0: 1.0, 1: 0.8, 2: 0.5}.get(distance, 0.25)
 
     @staticmethod
-    def _experience_match(years: float, minimum: float | None, seniority_match: float) -> float:
-        years_score = 1.0 if not minimum else min(1.0, years / minimum)
+    def _experience_match(
+        years: float,
+        minimum: float | None,
+        seniority_match: float,
+        *,
+        seniority_known: bool,
+    ) -> float:
+        if minimum is None:
+            return 100 * seniority_match
+        years_score = min(1.0, years / minimum)
+        # When no job seniority was published, score the explicit experience
+        # requirement by itself rather than injecting a synthetic perfect fit.
+        if not seniority_known:
+            return 100 * years_score
         return 100 * (0.7 * years_score + 0.3 * seniority_match)
 
     @staticmethod

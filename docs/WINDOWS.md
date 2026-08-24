@@ -5,7 +5,7 @@ The Windows release is the easiest way to run Career Radar locally. It is self-c
 ## Install
 
 1. Open the GitHub **Releases** page.
-2. Download the setup file matching the release version (for example, `CareerRadar-Setup-v1.1.0.exe`).
+2. Download the setup file matching the release version (for example, `CareerRadar-Setup-v1.1.4.exe`).
 3. Run the installer.
 4. Launch **Career Radar** from the Start menu (or create the optional desktop shortcut).
 
@@ -69,7 +69,7 @@ network call.
 
 ## Portable package
 
-Each release contains a versioned portable archive (for example, `CareerRadar-Portable-v1.1.0.zip`) alongside the
+Each release contains a versioned portable archive (for example, `CareerRadar-Portable-v1.1.4.zip`) alongside the
 installer when its clean smoke test passes. Extract it and run `CareerRadar.exe`;
 it has the same dependency-free runtime as the installer.
 
@@ -77,6 +77,6 @@ it has the same dependency-free runtime as the installer.
 
 `SHA256SUMS.txt` in the release contains SHA-256 hashes for the installer and portable ZIP.
 
-## Windows SmartScreen
+## Windows code signing
 
-The current v1 Windows binary is not Authenticode-signed because the project does not yet have a Windows code-signing certificate. Windows SmartScreen may therefore show an **Unknown publisher** warning. The release workflow builds the binaries from the repository source and publishes SHA-256 checksums alongside them.
+Tagged release artifacts are Authenticode-signed and timestamped. The release workflow refuses to publish a tag unless the repository secrets `WINDOWS_CERTIFICATE_BASE64` (a base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` are configured. Pull-request artifacts may remain unsigned and are test-only.

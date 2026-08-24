@@ -2,7 +2,7 @@ name: Daily ingestion
 
 on:
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -22,31 +22,41 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Require persistent production database
+      - name: Restore durable branch-backed state when no database secret is configured
         shell: bash
         run: |
+          mkdir -p build/catalog-seed
+          git fetch origin market-data || true
           if [[ -z "$DATABASE_URL" ]]; then
-            echo "ERROR: DATABASE_URL repository secret is required for persistent daily ingestion."
-            echo "The live-ingestion CI test proves public ATS feeds work, but scheduled production ingestion cannot persist without a database."
-            exit 1
+            echo "DATABASE_URL=sqlite:///$GITHUB_WORKSPACE/build/daily.sqlite" >> "$GITHUB_ENV"
+            echo "BRANCH_BACKED_SQLITE=1" >> "$GITHUB_ENV"
+            if git cat-file -e origin/market-data:data/state/daily.sqlite.gz 2>/dev/null; then
+              git show origin/market-data:data/state/daily.sqlite.gz | gzip -dc > build/daily.sqlite
+              echo "Restored durable SQLite ingestion state from market-data"
+            else
+              echo "No prior SQLite state; this run will bootstrap it"
+            fi
+          else
+            echo "BRANCH_BACKED_SQLITE=0" >> "$GITHUB_ENV"
           fi
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install
-        run: python -m pip install -e ".[postgres]"
+        run: |
+          python -m pip install --require-hashes -r requirements-runtime.lock
+          python -m pip install --no-build-isolation --no-deps -e .
 
       - name: Resolve authoritative source registry snapshot
         shell: bash
         run: |
           mkdir -p build
-          git fetch origin market-data || true
           if git cat-file -e origin/market-data:source-registry.latest.json 2>/dev/null; then
             git show origin/market-data:source-registry.latest.json > build/source-registry.latest.json
             echo "Using the durable source-discovery publication"
@@ -76,7 +86,7 @@ jobs:
           evj-ingest sources discover --mode recent --method manual --limit 100
 
       - name: Ingest current jobs from verified registry sources
-        run: evj-ingest jobs --registry
+        run: evj-ingest jobs --registry --allow-partial --summary-file build/ingestion-summary.json
 
       - name: Report persisted ingestion result
         run: |
@@ -95,15 +105,72 @@ jobs:
           PY
 
       - name: Publish durable catalog snapshot
-        run: python scripts/publish_catalog.py --output data/catalog --version "${GITHUB_RUN_ID}"
+        run: python scripts/publish_catalog.py --output build/publication/data/catalog --version "${GITHUB_RUN_ID}"
 
-      - name: Persist catalog on market-data branch
+      - name: Snapshot durable SQLite state
+        if: env.BRANCH_BACKED_SQLITE == '1'
+        shell: bash
+        run: |
+          mkdir -p build/publication/data/state
+          cp build/daily.sqlite build/publication/daily-public.sqlite
+          python - <<'PY'
+          from sqlalchemy import create_engine, select
+          from sqlalchemy.orm import Session
+          from europe_visa_jobs.catalog.delivery import _public_metadata, _public_url
+          from europe_visa_jobs.db.models import Source
+
+          engine = create_engine("sqlite:///build/publication/daily-public.sqlite")
+          with Session(engine) as session:
+              for source in session.scalars(select(Source)):
+                  source.source_metadata = _public_metadata(source.source_metadata or {})
+                  source.careers_url = _public_url(source.careers_url)
+                  source.board_url = _public_url(source.board_url)
+                  source.api_url = _public_url(source.api_url)
+              session.commit()
+          engine.dispose()
+          PY
+          gzip -9 -c build/publication/daily-public.sqlite > build/publication/data/state/daily.sqlite.gz
+          test -s build/publication/data/state/daily.sqlite.gz
+
+      - name: Persist catalog and state atomically on market-data branch
         shell: bash
         run: |
           git config user.name "career-radar-bot"
           git config user.email "career-radar-bot@users.noreply.github.com"
-          git fetch origin market-data || true
-          git checkout -B market-data origin/market-data 2>/dev/null || git checkout -B market-data
+          if git show-ref --verify --quiet refs/remotes/origin/market-data; then
+            git checkout -B market-data origin/market-data
+          else
+            git checkout --orphan market-data
+            git rm -rf .
+          fi
+          mkdir -p data/catalog data/state
+          cp build/publication/data/catalog/* data/catalog/
+          if [[ "$BRANCH_BACKED_SQLITE" == "1" ]]; then
+            cp build/publication/data/state/daily.sqlite.gz data/state/daily.sqlite.gz
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          payloads = sorted(
+              Path("data/catalog").glob("catalog-*.json.gz"),
+              key=lambda item: item.name,
+              reverse=True,
+          )
+          for expired in payloads[14:]:
+              expired.unlink()
+          PY
           git add data/catalog
+          if [[ "$BRANCH_BACKED_SQLITE" == "1" ]]; then git add data/state/daily.sqlite.gz; fi
           git commit -m "data: publish catalog ${GITHUB_RUN_ID}" || echo "No catalog changes"
           git push origin market-data
+
+      - name: Report upstream source failures after durable publication
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path("build/ingestion-summary.json").read_text())
+          print(json.dumps(summary, indent=2))
+          if summary["sources_failed"]:
+              raise SystemExit(f"{summary['sources_failed']} source(s) failed; healthy data and state were still published")
+          PY

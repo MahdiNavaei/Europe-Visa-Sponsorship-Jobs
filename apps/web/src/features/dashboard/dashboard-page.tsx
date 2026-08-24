@@ -41,8 +41,8 @@ export function DashboardPage() {
   const { data: candidate } = useCandidate(candidateId);
   const { data: stats, isLoading: statsLoading, isError: statsError } = useStats();
   const { data: catalogStatus } = useCatalogStatus();
-  const { data: recommendations, isLoading: recLoading } = useRecommendations(candidateId, new URLSearchParams({ limit: "500" }));
-  const { data: freshJobs, isLoading: jobsLoading } = useJobs(new URLSearchParams({ limit: "500" }));
+  const { data: recommendations, isLoading: recLoading } = useRecommendations(candidateId, new URLSearchParams({ limit: "50" }));
+  const { data: freshJobs, isLoading: jobsLoading } = useJobs(new URLSearchParams({ limit: "20" }));
   const signalJobs = candidateId ? recommendations?.map((item) => item.job) ?? [] : freshJobs ?? [];
   const newMatches = signalJobs.filter((job) => job.posted_at && DASHBOARD_REFERENCE_TIME - new Date(job.posted_at).getTime() <= DAY_MS).length;
   const highConfidence = recommendations?.filter((item) => item.scores.overall >= 80).length ?? 0;

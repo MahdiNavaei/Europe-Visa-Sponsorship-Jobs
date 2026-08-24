@@ -11,6 +11,11 @@ from typing import Any
 import httpx
 
 from europe_visa_jobs.settings import get_settings
+from europe_visa_jobs.utils.url_security import (
+    UnsafeUrlError,
+    validate_public_http_url,
+    validated_redirect,
+)
 
 
 @dataclass
@@ -23,10 +28,18 @@ class PublicResponse:
 
 
 class PublicFetchError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, category: str = "network") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        category: str = "network",
+        retry_after_seconds: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.category = category
+        self.retry_after_seconds = retry_after_seconds
 
 
 def _retryable(status: int | None, category: str) -> bool:
@@ -46,6 +59,21 @@ def _delay(response: httpx.Response | None, attempt: int) -> float:
                 except (TypeError, ValueError, OverflowError):
                     pass
     return min((2**attempt) + random.uniform(0, 0.35), 30.0)
+
+
+def _retry_after_seconds(response: httpx.Response | None) -> int | None:
+    if response is None:
+        return None
+    value = response.headers.get("retry-after")
+    if not value:
+        return None
+    try:
+        return max(0, int(float(value)))
+    except ValueError:
+        try:
+            return max(0, int(parsedate_to_datetime(value).timestamp() - time.time()))
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 async def fetch_public(
@@ -76,7 +104,22 @@ async def fetch_public(
         response: httpx.Response | None = None
         category = "network"
         try:
-            response = await client.request(method, url, headers=request_headers, params=params, timeout=timeout)
+            current_url = validate_public_http_url(url)
+            for _ in range(6):
+                response = await client.request(
+                    method,
+                    current_url,
+                    headers=request_headers,
+                    params=params,
+                    timeout=timeout,
+                    follow_redirects=False,
+                )
+                if response.is_redirect and response.headers.get("location"):
+                    current_url = validated_redirect(current_url, response.headers["location"])
+                    continue
+                break
+            else:
+                raise PublicFetchError(f"{url} exceeded redirect limit", category="redirect")
             duration_ms = int((monotonic() - started) * 1000)
             if response.status_code == 304:
                 return PublicResponse(response.status_code, dict(response.headers), b"", duration_ms, True)
@@ -93,13 +136,20 @@ async def fetch_public(
             else:
                 category = "http_error"
             if attempt == attempts - 1:
-                raise PublicFetchError(f"{url} returned HTTP {response.status_code}", status_code=response.status_code, category=category)
+                raise PublicFetchError(
+                    f"{url} returned HTTP {response.status_code}",
+                    status_code=response.status_code,
+                    category=category,
+                    retry_after_seconds=_retry_after_seconds(response),
+                )
         except httpx.TimeoutException as exc:
             if attempt == attempts - 1:
                 raise PublicFetchError(f"{url} timed out", category="timeout") from exc
         except httpx.NetworkError as exc:
             if attempt == attempts - 1:
                 raise PublicFetchError(f"{url} network error: {exc}", category="network") from exc
+        except UnsafeUrlError as exc:
+            raise PublicFetchError(f"{url} is unsafe: {exc}", category="unsafe_url") from exc
         if _retryable(response.status_code if response else None, category):
             await asyncio.sleep(_delay(response, attempt))
     raise PublicFetchError(f"{url} failed after retries")

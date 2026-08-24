@@ -54,7 +54,9 @@ class GreenhouseConnector(BaseConnector):
                     department=_first_name(row.get("departments")),
                     apply_url=row.get("absolute_url") or "",
                     job_url=row.get("absolute_url"),
-                    posted_at=parse_datetime(row.get("updated_at")),
+                    # Greenhouse's ``updated_at`` is a mutation timestamp, not
+                    # the publication date.  Never present it as job freshness.
+                    posted_at=parse_datetime(row.get("first_published") or row.get("published_at")),
                     job_family=classify_role(row.get("title") or ""),
                     raw=row,
                 )

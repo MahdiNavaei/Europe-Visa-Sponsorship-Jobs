@@ -159,6 +159,9 @@ async def validate_candidate(
             error_category=exc.category,
             failure_type=exc.category,
             error=str(exc),
+            metadata={"retry_after_seconds": exc.retry_after_seconds}
+            if exc.retry_after_seconds is not None
+            else {},
         )
     except httpx.TimeoutException as exc:
         return SourceValidation(

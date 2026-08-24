@@ -9,13 +9,14 @@ without running an internet-wide discovery pass at first launch.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from europe_visa_jobs.db.models import Source
 from europe_visa_jobs.schemas import SourceConfig, SourceValidationState
 
 SNAPSHOT_FORMAT = "career-radar-source-registry/v1"
+DEFAULT_MAX_SNAPSHOT_AGE = timedelta(days=14)
 
 
 class SnapshotValidationError(ValueError):
@@ -89,11 +90,33 @@ def build_snapshot(sources: list[Source]) -> dict[str, Any]:
     }
 
 
-def validate_snapshot(payload: object, *, minimum_verified: int = 0) -> list[SourceConfig]:
+def _parse_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise SnapshotValidationError(f"registry snapshot {label} is missing")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise SnapshotValidationError(f"registry snapshot {label} is invalid") from exc
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def validate_snapshot(
+    payload: object,
+    *,
+    minimum_verified: int = 0,
+    maximum_age: timedelta | None = DEFAULT_MAX_SNAPSHOT_AGE,
+    now: datetime | None = None,
+) -> list[SourceConfig]:
     if not isinstance(payload, dict) or payload.get("format") != SNAPSHOT_FORMAT:
         raise SnapshotValidationError("registry snapshot has an unsupported format")
-    if not isinstance(payload.get("generated_at"), str):
-        raise SnapshotValidationError("registry snapshot has no generation timestamp")
+    generated_at = _parse_timestamp(payload.get("generated_at"), "generation timestamp")
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    if generated_at > current + timedelta(minutes=5):
+        raise SnapshotValidationError("registry snapshot generation timestamp is in the future")
+    if maximum_age is not None and generated_at < current - maximum_age:
+        raise SnapshotValidationError(
+            f"registry snapshot is stale: generated {generated_at.isoformat()}"
+        )
     records = payload.get("sources")
     if not isinstance(records, list):
         raise SnapshotValidationError("registry snapshot has no source list")
@@ -121,5 +144,17 @@ def validate_snapshot(payload: object, *, minimum_verified: int = 0) -> list[Sou
             raise SnapshotValidationError(f"registry snapshot board {key[0]}:{key[1]} lacks verified health evidence")
         if not health.get("last_success_at"):
             raise SnapshotValidationError(f"registry snapshot board {key[0]}:{key[1]} lacks a successful validation time")
+        last_success = _parse_timestamp(
+            health.get("last_success_at"),
+            f"board {key[0]}:{key[1]} successful validation time",
+        )
+        if last_success > current + timedelta(minutes=5):
+            raise SnapshotValidationError(
+                f"registry snapshot board {key[0]}:{key[1]} has a future validation time"
+            )
+        if maximum_age is not None and last_success < current - maximum_age:
+            raise SnapshotValidationError(
+                f"registry snapshot board {key[0]}:{key[1]} has stale health evidence"
+            )
         configs.append(config)
     return configs

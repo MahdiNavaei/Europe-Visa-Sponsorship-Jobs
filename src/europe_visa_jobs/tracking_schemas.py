@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from europe_visa_jobs.schemas import JobRead
+from europe_visa_jobs.schemas import JobSummaryRead
 
 
 class ApplicationStatus(StrEnum):
@@ -29,6 +29,6 @@ class CandidateJobStateRead(CandidateJobStateInput):
     job_id: int
     created_at: datetime
     updated_at: datetime
-    job: JobRead
+    job: JobSummaryRead
 
     model_config = ConfigDict(from_attributes=True)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from europe_visa_jobs.api.app import app
@@ -42,6 +44,13 @@ def test_api_health_jobs_details_companies_and_stats(session_factory):
         assert health.headers["x-content-type-options"] == "nosniff"
         assert health.headers["x-frame-options"] == "DENY"
         assert health.headers["referrer-policy"] == "no-referrer"
+        assert health.headers["x-request-id"]
+        assert client.get("/ready").json()["status"] == "ready"
+
+        metrics = client.get("/metrics")
+        assert metrics.status_code == 200
+        assert "career_radar_http_requests_total" in metrics.text
+        assert 'path="/health"' in metrics.text
 
         countries = client.get("/api/v1/countries").json()["countries"]
         assert "Germany" in countries and "Netherlands" in countries
@@ -59,11 +68,14 @@ def test_api_health_jobs_details_companies_and_stats(session_factory):
         companies = client.get("/api/v1/companies")
         assert companies.status_code == 200
         assert companies.json()[0]["name"] == "Acme"
+        assert client.get("/api/v1/companies/9999").status_code == 404
 
         stats = client.get("/api/v1/stats").json()
         assert stats["total_jobs"] == 1
         assert stats["eligible_jobs"] == 1
         assert client.get("/api/v1/jobs/9999").status_code == 404
+        assert client.put("/api/v1/candidates/9999", json={}).status_code in {404, 422}
+        assert client.get("/api/v1/candidates/9999/export").status_code == 404
     finally:
         app.dependency_overrides.clear()
 
@@ -87,7 +99,9 @@ def test_api_cors_is_explicit_and_exposes_pagination_header():
 
     response = client.get("/health", headers={"Origin": allowed_origin})
     assert response.headers["access-control-allow-origin"] == allowed_origin
-    assert response.headers["access-control-expose-headers"] == "X-Total-Count"
+    exposed = response.headers["access-control-expose-headers"]
+    assert "X-Total-Count" in exposed
+    assert "Warning" in exposed
 
     denied = client.get("/health", headers={"Origin": "https://attacker.example"})
     assert "access-control-allow-origin" not in denied.headers
@@ -119,7 +133,7 @@ def test_catalog_status_is_read_only_and_safe_when_not_configured(monkeypatch):
     }
 
 
-def test_default_jobs_browse_includes_unknown_but_excludes_rejected(session_factory):
+def test_default_jobs_browse_is_eligible_only_and_unknown_is_explicit(session_factory):
     with session_factory() as session:
         repo = Repository(session)
         for index, status in enumerate((EligibilityStatus.ELIGIBLE, EligibilityStatus.UNKNOWN, EligibilityStatus.REJECTED)):
@@ -147,8 +161,13 @@ def test_default_jobs_browse_includes_unknown_but_excludes_rejected(session_fact
     try:
         default = client.get("/api/v1/jobs", params={"query": "Browse Policy"})
         assert default.status_code == 200
-        assert {item["eligibility_status"] for item in default.json()} == {"eligible", "unknown"}
-        assert default.headers["X-Total-Count"] == "2"
+        assert {item["eligibility_status"] for item in default.json()} == {"eligible"}
+        assert default.headers["X-Total-Count"] == "1"
+        assert "description" not in default.json()[0]
+
+        unknown = client.get("/api/v1/jobs", params={"query": "Browse Policy", "status": "unknown"})
+        assert unknown.status_code == 200
+        assert {item["eligibility_status"] for item in unknown.json()} == {"unknown"}
 
         rejected = client.get("/api/v1/jobs", params={"query": "Browse Policy", "status": "rejected"})
         assert rejected.status_code == 200
@@ -156,6 +175,17 @@ def test_default_jobs_browse_includes_unknown_but_excludes_rejected(session_fact
         assert rejected.json()[0]["eligibility_status"] == "rejected"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_catalog_status_reads_valid_state_and_rejects_invalid_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAREERRADAR_DATA_DIR", str(tmp_path))
+    status_path = tmp_path / "last-refresh.json"
+    status_path.write_text(json.dumps({"state": "complete", "jobs_loaded": 12}), encoding="utf-8")
+    client = TestClient(app)
+    assert client.get("/api/v1/catalog/status").json()["jobs_loaded"] == 12
+
+    status_path.write_text("not json", encoding="utf-8")
+    assert client.get("/api/v1/catalog/status").json()["state"] == "not_started"
 
 
 def test_company_metrics_use_full_active_catalog_not_first_page(session_factory):

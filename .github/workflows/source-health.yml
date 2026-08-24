@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: source-health-retry
+  cancel-in-progress: false
+
 jobs:
   health:
     runs-on: ubuntu-latest
@@ -18,13 +22,15 @@ jobs:
       REQUEST_TIMEOUT_SECONDS: "15"
       INGESTION_CONCURRENCY: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-runtime.lock
+          python -m pip install --no-build-isolation --no-deps -e .
       - name: Prepare registry
         run: |
           test -n "$DATABASE_URL" || (echo "SOURCE_STATE_DATABASE_URL is required for durable source health state" && exit 1)
@@ -32,8 +38,26 @@ jobs:
           evj-ingest sources bootstrap --config config/sources.json
           evj-ingest sources discover --mode recent --limit 100
       - name: Retry failed sources without deleting prior jobs
-        run: evj-ingest sources retry-failed --limit 100 || true
+        run: evj-ingest sources retry-failed --limit 100 --allow-partial --summary-file retry-summary.json
       - name: Export health evidence
         run: evj-ingest sources health --json > source-health.json
       - name: Confirm durable health state
         run: test -s source-health.json
+      - name: Upload retry and health evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: source-health-${{ github.run_id }}
+          path: |
+            source-health.json
+            retry-summary.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Surface remaining retry failures
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path("retry-summary.json").read_text())
+          if summary["sources_failed"]:
+              raise SystemExit(f"{summary['sources_failed']} due source retry/retries failed")
+          PY

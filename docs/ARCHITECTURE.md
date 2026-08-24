@@ -8,7 +8,7 @@
 - Provider-specific parsing isolated behind connectors
 - Country immigration logic isolated from text signals
 - Storage of evidence, not only final labels
-- Truthful default: eligible and unknown technical jobs are discoverable; unknown is never presented as eligible
+- Truthful default: only evidence-backed eligible jobs are shown; unknown requires an explicit research filter
 
 ## Packages
 
@@ -120,7 +120,7 @@ The unique job identity is:
 
 ## API default safety
 
-`GET /api/v1/jobs` defaults to active eligible plus unknown records. Rejected
-records remain excluded from normal browse but are available explicitly for audit.
+`GET /api/v1/jobs` defaults to active eligible records. Unknown and rejected records
+remain excluded from normal browse but are available explicitly for research or audit.
 
 `unknown` and `rejected` records remain available for audit/debugging when explicitly requested.

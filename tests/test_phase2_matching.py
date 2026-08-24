@@ -72,3 +72,36 @@ def test_excluded_location_and_missing_skills_are_warnings(db_session):
     assert recommendation.match.country_score == 0
     assert "Kubernetes" in recommendation.match.missing_skills
     assert any("excluded" in warning for warning in recommendation.match.warnings)
+
+
+def test_unpublished_requirements_are_neutral_not_perfect(db_session):
+    repo = Repository(db_session)
+    candidate = repo.create_candidate(
+        CandidateCreate(
+            name="Candidate",
+            target_roles=["Backend Engineer"],
+            skills=["Python"],
+            years_of_experience=10,
+            preferred_countries=["Germany"],
+        )
+    )
+    normalized = NormalizedJob(
+        external_id="requirements-unknown",
+        provider=ATSProvider.GREENHOUSE,
+        source_slug="phase2-fixture",
+        company_name="Acme",
+        title="Backend Engineer",
+        description="Visa sponsorship is available. Join our engineering team.",
+        location="Berlin, Germany",
+        country="Germany",
+        apply_url="https://example.com/requirements-unknown",
+    )
+    repo.upsert_job(normalized, EligibilityEngine().assess(normalized))
+    db_session.commit()
+
+    match = RankingEngine().recommend(candidate, repo.list_recommendation_jobs())[0].match
+    assert match.skill_score == 50
+    assert match.experience_score == 50
+    assert match.required_skill_coverage == 0.5
+    assert any("did not publish enough skill" in warning for warning in match.warnings)
+    assert any("did not publish enough experience" in warning for warning in match.warnings)

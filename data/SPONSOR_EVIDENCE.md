@@ -1,6 +1,9 @@
 # Production sponsor evidence
 
-`sponsors.csv.gz` is generated, not hand-maintained. It contains only the fields
+`sponsors.csv.gz` is generated, not hand-maintained. `sponsors.manifest.json`
+records generation time, row counts, the dataset SHA-256, and official-source
+provenance. New automated refreshes also retain SHA-256 hashes of both downloaded
+inputs. The dataset contains only the fields
 needed for strict company-name matching:
 
 - company name;
@@ -16,6 +19,20 @@ python scripts/build_sponsor_registry.py `
   --ind-html build/ind-work-register.html `
   --output data/sponsors.csv.gz
 ```
+
+Validate the checked-in cache and its freshness without network access:
+
+```powershell
+python scripts/build_sponsor_registry.py --validate `
+  --output data/sponsors.csv.gz `
+  --manifest data/sponsors.manifest.json `
+  --max-age-days 45
+```
+
+The scheduled refresh workflow downloads both sources itself, enforces minimum
+record counts, records input hashes, and opens or updates a reviewable pull
+request when the official registers change. It never substitutes guessed or
+third-party company data.
 
 The inputs are current downloads from the official [UKVI worker sponsor
 register](https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers)

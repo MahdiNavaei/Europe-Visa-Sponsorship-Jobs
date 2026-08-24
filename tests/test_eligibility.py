@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from europe_visa_jobs.eligibility import EligibilityEngine, SponsorRegistryStore
 from europe_visa_jobs.schemas import (
     ATSProvider,
@@ -96,3 +98,61 @@ def test_unknown_non_european_country_is_not_claimed_as_european_coverage():
     assert result.score == 0
     assert any(item.code == "visa_sponsorship" for item in result.evidence)
     assert any(item.code == "unsupported_country" for item in result.evidence)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Will you now or in the future require visa sponsorship?",
+        "Please state whether visa sponsorship would be required.",
+        "Visa sponsorship may be discussed during the interview process.",
+        "Experience with immigration support systems is a plus.",
+    ],
+)
+def test_ambiguous_sponsorship_mentions_are_not_positive(description: str):
+    result = EligibilityEngine().assess(job(description))
+    assert result.status == EligibilityStatus.UNKNOWN
+    assert not any(item.kind.value == "job_positive" and item.weight >= 50 for item in result.evidence)
+
+
+@pytest.mark.parametrize(
+    ("description", "reason"),
+    [
+        ("Visa sponsorship is unavailable for this position.", "no_sponsorship_direct"),
+        ("Work permit support is not provided.", "no_sponsorship_direct"),
+        ("Bewerber müssen bereits eine Arbeitserlaubnis besitzen.", "de_no_sponsorship"),
+        ("Visumsponsoring ist nicht möglich.", "de_no_sponsorship"),
+        ("Kandidaten moeten reeds over een werkvergunning beschikken.", "nl_no_sponsorship"),
+        ("Visumsponsoring is niet beschikbaar.", "nl_no_sponsorship"),
+        ("Vous devez déjà disposer d\u2019une autorisation de travail.", "fr_no_sponsorship"),
+        ("Parrainage de visa non disponible.", "fr_no_sponsorship"),
+    ],
+)
+def test_multilingual_restriction_corpus_is_rejected(description: str, reason: str):
+    result = EligibilityEngine().assess(job(description))
+    assert result.status == EligibilityStatus.REJECTED
+    assert reason in result.hard_rejection_reasons
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Wir bieten Unterstützung beim Visum und bei der Arbeitserlaubnis.",
+        "Visumsponsoring wird angeboten.",
+        "Wij bieden ondersteuning bij het visum en de werkvergunning.",
+        "Visumsponsoring is beschikbaar.",
+        "Nous offrons une prise en charge du visa et du permis de travail.",
+        "Parrainage de visa disponible.",
+    ],
+)
+def test_multilingual_affirmative_corpus_is_eligible(description: str):
+    result = EligibilityEngine().assess(job(description))
+    assert result.status == EligibilityStatus.ELIGIBLE
+    assert any(item.kind.value == "job_positive" and item.weight >= 50 for item in result.evidence)
+
+
+def test_negative_clause_overrides_affirmative_clause_in_any_order():
+    result = EligibilityEngine().assess(
+        job("We provide relocation support. However, visa sponsorship is unavailable for this position.")
+    )
+    assert result.status == EligibilityStatus.REJECTED

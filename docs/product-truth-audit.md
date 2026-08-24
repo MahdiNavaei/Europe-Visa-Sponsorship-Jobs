@@ -7,7 +7,7 @@ release tags are not modified.
 | Priority | Type | Confirmed surface | Root cause | Required correction | Regression evidence |
 | --- | --- | --- | --- | --- | --- |
 | P0 | architectural defect | Desktop launcher | First launch performs live registry ingestion before opening the UI; installed registry is static | Open local UI after migration and seed; sync a versioned central catalog in the background | launcher timing and offline-start tests |
-| P0 | architectural defect | Scheduled workflows and desktop | Discovery/health state is runner-local and desktop has no central data channel | Durable registry + signed-by-hash manifest and compressed catalog import | two-run persistence, manifest, client sync tests |
+| P0 | architectural defect | Scheduled workflows and desktop | Discovery/health state is runner-local and desktop has no central data channel | Durable registry + SHA-256 integrity-checked manifest and compressed catalog import | two-run persistence, manifest, client sync tests |
 | P0 | confirmed bug | `ingestion/pipeline.py` | All fetched rows are filtered by title before persistence and missing jobs are deactivated after any successful-looking fetch | Persist classification inventory; use explicit completeness and deactivate only on complete fetch | classification/accounting and partial-fetch tests |
 | P0 | data-quality defect | Eligibility and API | Job sponsorship, company registry status, and final eligibility are represented as one decision path | Persist/render independent job signal, company status, and final status with evidence polarity | sponsorship semantics tests |
 | P1 | confirmed bug | Connectors | Several production connectors make one request; Teamtailor public mode parses one page | Provider-specific pagination/exhaustion contracts and explicit complete/partial state | deterministic connector fixtures |
@@ -27,4 +27,3 @@ publish/import channel cannot reach installed clients, and a larger feed without
 accounting or completeness semantics can silently remove legitimate jobs. The first
 implementation slice therefore establishes the data contract and atomic local sync
 before broadening connector behavior or UI counts.
-

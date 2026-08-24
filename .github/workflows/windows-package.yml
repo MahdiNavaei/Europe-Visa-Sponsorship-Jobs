@@ -27,18 +27,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
@@ -47,8 +47,8 @@ jobs:
       - name: Install backend packaging dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]" pyinstaller
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
 
       - name: Assert packaging imports the checked-out source
         shell: pwsh
@@ -87,7 +87,7 @@ jobs:
             git show "origin/market-data:data/catalog/$payload" > "build/windows/catalog/$payload"
             Write-Host "Bundled published market catalog $payload"
           } else {
-            Write-Host "No durable market catalog publication exists; package uses source-registry bootstrap"
+            throw "No durable market catalog publication exists on market-data; refusing to build a release with synthetic-only smoke coverage"
           }
           New-Item -ItemType Directory -Force build/windows/app/runtime | Out-Null
           New-Item -ItemType Directory -Force build/windows/app/web-standalone | Out-Null
@@ -138,13 +138,59 @@ jobs:
 
           Copy-Item LICENSE build/windows/app/LICENSE.txt
 
+      - name: Prepare Windows code signing
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            if ($env:GITHUB_REF -like "refs/tags/v*") {
+              throw "Tagged Windows releases require the WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD secrets."
+            }
+            Write-Warning "No signing certificate is configured; this non-release artifact will be unsigned."
+            "enabled=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP "career-radar-codesign.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          )
+          "CAREERRADAR_SIGN_CERT=$certificatePath" >> $env:GITHUB_ENV
+          "enabled=true" >> $env:GITHUB_OUTPUT
+
+      - name: Sign launcher binary
+        if: steps.signing.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "WINDOWS_CERTIFICATE_PASSWORD is required when a signing certificate is configured."
+          }
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw "signtool.exe was not found." }
+          & $signTool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
+            /f $env:CAREERRADAR_SIGN_CERT /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            build/windows/app/CareerRadar.exe
+          if ($LASTEXITCODE -ne 0) { throw "Launcher signing failed with exit code $LASTEXITCODE" }
+          $signature = Get-AuthenticodeSignature build/windows/app/CareerRadar.exe
+          if ($signature.Status -ne "Valid") { throw "Launcher signature is not valid: $($signature.Status)" }
+
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: choco install innosetup --version=6.7.1 --no-progress -y
 
       - name: Build installer and portable archive
         id: package
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $version = (Get-Content apps/web/package.json | ConvertFrom-Json).version
           New-Item -ItemType Directory -Force build/windows/installer | Out-Null
@@ -167,6 +213,18 @@ jobs:
           $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
           if (-not (Test-Path $installer)) { throw "Installer was not created." }
           if (-not (Test-Path $portable)) { throw "Portable archive was not created." }
+          if ("${{ steps.signing.outputs.enabled }}" -eq "true") {
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+              Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signTool) { throw "signtool.exe was not found." }
+            & $signTool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
+              /f $env:CAREERRADAR_SIGN_CERT /p $env:WINDOWS_CERTIFICATE_PASSWORD $installer
+            if ($LASTEXITCODE -ne 0) { throw "Installer signing failed with exit code $LASTEXITCODE" }
+            $signature = Get-AuthenticodeSignature $installer
+            if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($signature.Status)" }
+          }
           $hashes = @(
             "{0}  {1}" -f (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower(), (Split-Path $installer -Leaf)
             "{0}  {1}" -f (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower(), (Split-Path $portable -Leaf)
@@ -185,7 +243,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Upload Windows packages before runtime smoke test
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: career-radar-windows-v${{ steps.package.outputs.version }}
           path: |
@@ -230,6 +288,7 @@ jobs:
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
           $env:CAREERRADAR_DATA_DIR = $smokeDataDir
           $env:CAREERRADAR_SMOKE_SEED = "1"
+          $env:CAREERRADAR_REQUIRE_BUNDLED_CATALOG = "1"
           try {
             $installedSmoke = Start-Process -FilePath "$installDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
             if ($installedSmoke.ExitCode -ne 0) {
@@ -259,6 +318,7 @@ jobs:
             $env:PATH = $savedPath
             Remove-Item Env:CAREERRADAR_DATA_DIR -ErrorAction SilentlyContinue
             Remove-Item Env:CAREERRADAR_SMOKE_SEED -ErrorAction SilentlyContinue
+            Remove-Item Env:CAREERRADAR_REQUIRE_BUNDLED_CATALOG -ErrorAction SilentlyContinue
           }
 
   publish-release:
@@ -270,10 +330,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Download Windows packages
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: career-radar-windows-v*
           path: release-assets
@@ -302,7 +362,7 @@ jobs:
 
           Advanced developers can use the repository's Docker/PostgreSQL/source installation documented in README.md.
 
-          > The Windows package is currently unsigned. Windows SmartScreen may show an unknown-publisher warning until a code-signing certificate is configured.
+          Both Windows executables are Authenticode-signed and timestamped. Verify the included SHA-256 checksums before installation.
           EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then

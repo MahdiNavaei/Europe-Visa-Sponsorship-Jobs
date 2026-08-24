@@ -14,6 +14,37 @@ def load_launcher_module():
     return module
 
 
+def test_launcher_falls_back_when_preferred_ports_are_occupied(monkeypatch):
+    launcher = load_launcher_module()
+
+    class FakeSocket:
+        attempts = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def bind(self, address):
+            if address[1] and FakeSocket.attempts < 2:
+                FakeSocket.attempts += 1
+                raise OSError("occupied")
+            self.address = (address[0], 51000 + FakeSocket.attempts)
+            FakeSocket.attempts += 1
+
+        def getsockname(self):
+            return self.address
+
+    monkeypatch.setattr(launcher.socket, "socket", lambda *_args: FakeSocket())
+    launcher.configure_available_ports()
+    assert launcher.API_PORT != 43127
+    assert launcher.WEB_PORT != 43128
+    assert launcher.API_PORT != launcher.WEB_PORT
+    assert str(launcher.API_PORT) in launcher.API_URL
+    assert str(launcher.WEB_PORT) in launcher.WEB_URL
+
+
 class FakeTclError(Exception):
     pass
 

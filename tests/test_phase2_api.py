@@ -44,15 +44,16 @@ def test_candidate_and_recommendation_endpoints(session_factory):
         created = client.post("/api/v1/candidates", json=payload)
         assert created.status_code == 201
         candidate = created.json()
+        auth = {"X-Candidate-Token": candidate["access_token"]}
         assert candidate["skills"] == ["Python", "PyTorch"]
-        assert client.get(f"/api/v1/candidates/{candidate['id']}").status_code == 200
+        assert client.get(f"/api/v1/candidates/{candidate['id']}", headers=auth).status_code == 200
 
-        recommendations = client.get(f"/api/v1/recommendations/{candidate['id']}")
+        recommendations = client.get(f"/api/v1/recommendations/{candidate['id']}", headers=auth)
         assert recommendations.status_code == 200
         assert recommendations.json()[0]["job"]["title"] == "AI Engineer"
         assert recommendations.json()[0]["reasons"]
 
-        explanation = client.get(f"/api/v1/recommendations/{candidate['id']}/explain")
+        explanation = client.get(f"/api/v1/recommendations/{candidate['id']}/explain", headers=auth)
         assert explanation.status_code == 200
         assert explanation.json()["weights"]["visa"] == 0.3
         assert explanation.json()["weights"]["role"] == 0.25

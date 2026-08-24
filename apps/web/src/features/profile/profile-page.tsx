@@ -16,6 +16,20 @@ import { useCandidate, useRecommendations } from "@/lib/api/hooks";
 import { useCandidateId } from "@/lib/utils/candidate";
 import { formatCountry, formatScore } from "@/lib/utils/format";
 
+function formatPreference(value: string | null, locale: string) {
+  if (!value) return "—";
+  const labels = locale === "fa"
+    ? { required: "الزامی", preferred: "ترجیحی", no_preference: "بدون ترجیح" }
+    : { required: "Required", preferred: "Preferred", no_preference: "No preference" };
+  return labels[value as keyof typeof labels] ?? value.replaceAll("_", " ");
+}
+
+function formatSeniority(value: string | null, locale: string) {
+  if (!value) return "—";
+  const fa = { intern: "کارآموز", junior: "جونیور", mid: "میانی", senior: "سینیور", staff: "استف", lead: "لید", principal: "پرینسیپال", director: "مدیر" };
+  return locale === "fa" ? fa[value as keyof typeof fa] ?? value : value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function ProfilePage() {
   const locale = useLocale();
   const c = useTranslations("common");
@@ -41,9 +55,9 @@ export function ProfilePage() {
               <ProfileLine icon={ShieldCheck} label={t("visaSupport")} value={candidate.visa_required ? t("employerNeeded") : t("authorized")} />
               <ProfileLine icon={MapPin} label={t("preferredCountries")} value={candidate.preferred_countries.length ? candidate.preferred_countries.map((item) => formatCountry(item, locale)).join(" · ") : t("openEurope")} />
               <ProfileLine icon={BriefcaseBusiness} label={t("experience")} value={`${candidate.years_of_experience} ${t("years")}`} />
-              <ProfileLine icon={UserRound} label={t("seniority")} value={candidate.seniority ?? "—"} />
-              <ProfileLine icon={MapPin} label={t("relocation")} value={candidate.relocation_preference} />
-              <ProfileLine icon={MapPin} label={t("remote")} value={candidate.remote_preference} />
+              <ProfileLine icon={UserRound} label={t("seniority")} value={formatSeniority(candidate.seniority, locale)} />
+              <ProfileLine icon={MapPin} label={t("relocation")} value={formatPreference(candidate.relocation_preference, locale)} />
+              <ProfileLine icon={MapPin} label={t("remote")} value={formatPreference(candidate.remote_preference, locale)} />
             </div>
             <div className="mt-7 border-t border-[var(--line)] pt-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-[var(--muted)]">{t("skills")}</p><div className="mt-3 flex flex-wrap gap-2">{candidate.skills.length ? candidate.skills.map((skill) => <Badge key={skill} tone="accent">{skill}</Badge>) : <span className="text-sm text-[var(--muted)]">{t("addSkills")}</span>}</div></div>
           </CardContent>
