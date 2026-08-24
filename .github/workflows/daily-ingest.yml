@@ -161,6 +161,9 @@ jobs:
               expired.unlink()
           PY
           git checkout --orphan "market-data-catalog-${GITHUB_RUN_ID}"
+          # The orphan checkout keeps the previous index; clear it without
+          # deleting the working-tree files before selecting the public payload.
+          git rm -r --cached . 2>/dev/null || true
           # Keep runner-local build databases and generated diagnostics out of the
           # public data branch; only the catalog and durable state are published.
           git add data/catalog data/state
@@ -175,6 +178,8 @@ jobs:
           from pathlib import Path
           summary = json.loads(Path("build/ingestion-summary.json").read_text())
           print(json.dumps(summary, indent=2))
+          if summary["sources_failed"] and not summary["partial_success"]:
+              raise SystemExit(f"{summary['sources_failed']} source(s) failed and no healthy source data was published")
           if summary["sources_failed"]:
-              raise SystemExit(f"{summary['sources_failed']} source(s) failed; healthy data and state were still published")
+              print(f"::warning::{summary['sources_failed']} source(s) failed; healthy data and state were still published")
           PY
