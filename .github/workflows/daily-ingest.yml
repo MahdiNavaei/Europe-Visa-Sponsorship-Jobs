@@ -15,8 +15,8 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # A full verified-registry refresh covers 771 ATS boards. Keep the full
-    # batch and allow enough wall-clock time for public provider rate limits.
+    # Durable publication processes a bounded registry batch on each run and
+    # resumes the remaining verified boards from branch-backed state.
     timeout-minutes: 60
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -87,8 +87,8 @@ jobs:
           evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
-      - name: Ingest current jobs from verified registry sources
-        run: evj-ingest jobs --registry --allow-partial --summary-file build/ingestion-summary.json
+      - name: Ingest a durable registry batch
+        run: evj-ingest jobs --registry --only-uningested --largest-first --limit 100 --allow-partial --summary-file build/ingestion-summary.json
 
       - name: Report persisted ingestion result
         run: |
