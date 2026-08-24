@@ -87,7 +87,23 @@ jobs:
             git show "origin/market-data:data/catalog/$payload" > "build/windows/catalog/$payload"
             Write-Host "Bundled published market catalog $payload"
           } else {
-            throw "No durable market catalog publication exists on market-data; refusing to build a release with synthetic-only smoke coverage"
+            if ($env:GITHUB_REF -like "refs/tags/v*") {
+              throw "No durable market catalog publication exists on market-data; refusing to build a tagged release"
+            }
+            Write-Warning "No durable market catalog exists yet; bootstrapping a bounded live ATS catalog for this test-only package."
+            $env:DATABASE_URL = "sqlite:///./build/windows-package.sqlite"
+            python -m alembic upgrade head
+            if ($LASTEXITCODE -ne 0) { throw "Windows catalog migration failed." }
+            evj-ingest sponsors --production --file data/sponsors.csv.gz
+            if ($LASTEXITCODE -ne 0) { throw "Windows sponsor import failed." }
+            $sources = Get-Content config/sources.json | ConvertFrom-Json | Select-Object -First 5
+            $sources | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 build/windows-live-sources.json
+            evj-ingest jobs --sources build/windows-live-sources.json --allow-partial
+            if ($LASTEXITCODE -ne 0) { throw "Windows live catalog ingestion failed." }
+            python scripts/publish_catalog.py --output build/windows/catalog --version "windows-pr-$env:GITHUB_RUN_ID"
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path build/windows/catalog/latest.json)) {
+              throw "Windows live catalog publication failed."
+            }
           }
           New-Item -ItemType Directory -Force build/windows/app/runtime | Out-Null
           New-Item -ItemType Directory -Force build/windows/app/web-standalone | Out-Null
