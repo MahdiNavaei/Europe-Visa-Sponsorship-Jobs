@@ -11,8 +11,8 @@ import tempfile
 from datetime import UTC, datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from shutil import rmtree
 from pathlib import Path
+from shutil import rmtree
 from threading import Thread
 
 from sqlalchemy import create_engine
