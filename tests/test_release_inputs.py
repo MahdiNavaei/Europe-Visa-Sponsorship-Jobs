@@ -46,3 +46,5 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "validate_release_inputs.py --require-snapshot --require-input-hashes" in windows
     assert "windows_market_cycle_smoke.py" in windows
     assert "--only-uningested --largest-first --limit 100" in daily
+    assert "git add data/catalog data/state" in daily
+    assert "git add -A" not in daily
