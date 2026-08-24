@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException, Request, Response
 from fastapi.testclient import TestClient
 
+import europe_visa_jobs.utils.url_security as url_security
 from europe_visa_jobs.api.app import app
 from europe_visa_jobs.api.security import (
     SlidingWindowRateLimiter,
@@ -97,7 +98,19 @@ def test_candidate_token_protects_profile_export_tracking_and_delete(session_fac
         app.dependency_overrides.clear()
 
 
-def test_public_url_guard_rejects_local_targets_and_credentials():
+def test_public_url_guard_rejects_local_targets_and_credentials(monkeypatch):
+    resolver = url_security.getaddrinfo
+
+    def resolve(host, *args, **kwargs):
+        if host == "jobs.example.com":
+            return [(2, 1, 6, "", ("93.184.216.34", 0))]
+        return resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(
+        url_security,
+        "getaddrinfo",
+        resolve,
+    )
     assert validate_public_http_url("https://jobs.example.com/openings") == "https://jobs.example.com/openings"
     for value in (
         "file:///etc/passwd",

@@ -272,6 +272,12 @@ def test_catalog_sync_rejects_non_data_endpoint(db_session, tmp_path: Path) -> N
         sync_catalog(db_session, "http://example.invalid/latest.json", tmp_path)
 
 
+def test_catalog_sync_allows_only_explicit_loopback_test_endpoint(monkeypatch, db_session, tmp_path: Path) -> None:
+    monkeypatch.setenv("CAREERRADAR_ALLOW_LOCAL_CATALOG_TEST", "1")
+    with pytest.raises((OSError, ValueError)):
+        sync_catalog(db_session, "http://127.0.0.1:9/latest.json", tmp_path)
+
+
 def test_catalog_rejects_schema_and_size_errors(db_session, tmp_path: Path) -> None:
     repo = Repository(db_session)
     repo.upsert_job(_job("one"), EligibilityEngine().assess(_job("one")))

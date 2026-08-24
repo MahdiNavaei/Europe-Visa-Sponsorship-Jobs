@@ -87,6 +87,7 @@ async def fetch_public(
     last_modified: str | None = None,
     retries: int | None = None,
     timeout: float | None = None,
+    allowed_hosts: set[str] | frozenset[str] | None = None,
 ) -> PublicResponse:
     settings = get_settings()
     attempts = retries if retries is not None else settings.discovery_retry_attempts
@@ -104,7 +105,7 @@ async def fetch_public(
         response: httpx.Response | None = None
         category = "network"
         try:
-            current_url = validate_public_http_url(url)
+            current_url = validate_public_http_url(url, allowed_hosts=allowed_hosts)
             for _ in range(6):
                 response = await client.request(
                     method,
@@ -115,7 +116,11 @@ async def fetch_public(
                     follow_redirects=False,
                 )
                 if response.is_redirect and response.headers.get("location"):
-                    current_url = validated_redirect(current_url, response.headers["location"])
+                    current_url = validated_redirect(
+                        current_url,
+                        response.headers["location"],
+                        allowed_hosts=allowed_hosts,
+                    )
                     continue
                 break
             else:

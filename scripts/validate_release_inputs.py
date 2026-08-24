@@ -11,8 +11,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 from europe_visa_jobs.discovery.snapshot import validate_snapshot  # noqa: E402
+from scripts.build_sponsor_registry import validate_registry  # noqa: E402
 
 
 def _version_from_init() -> str:
@@ -29,7 +31,7 @@ def _installer_version() -> str:
     return match.group(1)
 
 
-def validate(*, require_snapshot: bool) -> str:
+def validate(*, require_snapshot: bool, require_input_hashes: bool = False) -> str:
     backend = _version_from_init()
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     web = json.loads((ROOT / "apps/web/package.json").read_text(encoding="utf-8"))["version"]
@@ -44,14 +46,27 @@ def validate(*, require_snapshot: bool) -> str:
         if not snapshot_path.is_file():
             raise RuntimeError("release registry snapshot is missing")
         validate_snapshot(json.loads(snapshot_path.read_text(encoding="utf-8")), minimum_verified=500)
+    if require_input_hashes:
+        validate_registry(
+            ROOT / "data/sponsors.csv.gz",
+            ROOT / "data/sponsors.manifest.json",
+            max_age_days=45,
+            minimum_uk=50_000,
+            minimum_nl=1_000,
+            require_input_hashes=True,
+        )
     return backend
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-snapshot", action="store_true")
+    parser.add_argument("--require-input-hashes", action="store_true")
     args = parser.parse_args()
-    print(f"release inputs valid: v{validate(require_snapshot=args.require_snapshot)}")
+    print(
+        "release inputs valid: "
+        f"v{validate(require_snapshot=args.require_snapshot, require_input_hashes=args.require_input_hashes)}"
+    )
 
 
 if __name__ == "__main__":

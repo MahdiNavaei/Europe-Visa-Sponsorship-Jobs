@@ -263,7 +263,13 @@ def import_catalog(
 def sync_catalog(session: Session, manifest_url: str, cache_dir: str | Path) -> CatalogManifest:
     """Download and import a public data-only manifest with strict URL bounds."""
     parsed = urllib.parse.urlparse(manifest_url)
-    if parsed.scheme != "https" or parsed.netloc not in {"raw.githubusercontent.com", "github.com"}:
+    public_endpoint = parsed.scheme == "https" and parsed.netloc in {"raw.githubusercontent.com", "github.com"}
+    local_test_endpoint = (
+        os.environ.get("CAREERRADAR_ALLOW_LOCAL_CATALOG_TEST") == "1"
+        and parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "localhost"}
+    )
+    if not public_endpoint and not local_test_endpoint:
         raise ValueError("catalog endpoint is not an allowed HTTPS data host")
     root = Path(cache_dir)
     root.mkdir(parents=True, exist_ok=True)
