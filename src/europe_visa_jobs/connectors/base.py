@@ -11,6 +11,7 @@ import httpx
 from europe_visa_jobs.schemas import NormalizedJob, SourceConfig
 from europe_visa_jobs.utils.url_security import (
     UnsafeUrlError,
+    provider_allowed_hosts,
     validate_public_http_url,
     validated_redirect,
 )
@@ -43,6 +44,9 @@ class BaseConnector(ABC):
     def endpoint(self, fallback: str) -> str:
         return self.source.api_url or fallback
 
+    def _allowed_hosts(self) -> frozenset[str]:
+        return provider_allowed_hosts(str(self.source.provider), self.source.api_url)
+
     @abstractmethod
     async def fetch_jobs(self) -> list[NormalizedJob]:
         raise NotImplementedError
@@ -58,11 +62,15 @@ class BaseConnector(ABC):
         for attempt in range(3):
             started = monotonic()
             try:
-                current_url = validate_public_http_url(url)
+                current_url = validate_public_http_url(url, allowed_hosts=self._allowed_hosts())
                 for _ in range(6):
                     response = await self.client.get(current_url, headers=headers, follow_redirects=False, **kwargs)
                     if response.is_redirect and response.headers.get("location"):
-                        current_url = validated_redirect(current_url, response.headers["location"])
+                        current_url = validated_redirect(
+                            current_url,
+                            response.headers["location"],
+                            allowed_hosts=self._allowed_hosts(),
+                        )
                         continue
                     break
                 else:
@@ -103,7 +111,7 @@ class BaseConnector(ABC):
             "CareerRadar/1.0 (+https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs)",
         )
         try:
-            current_url = validate_public_http_url(url)
+            current_url = validate_public_http_url(url, allowed_hosts=self._allowed_hosts())
             for _ in range(6):
                 response = await self.client.post(
                     current_url,
@@ -112,7 +120,11 @@ class BaseConnector(ABC):
                     **kwargs,
                 )
                 if response.is_redirect and response.headers.get("location"):
-                    current_url = validated_redirect(current_url, response.headers["location"])
+                    current_url = validated_redirect(
+                        current_url,
+                        response.headers["location"],
+                        allowed_hosts=self._allowed_hosts(),
+                    )
                     continue
                 break
             else:

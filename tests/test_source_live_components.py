@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 import europe_visa_jobs.ingestion.cli as ingestion_cli
+import europe_visa_jobs.utils.url_security as url_security
 from europe_visa_jobs.connectors.ashby import AshbyConnector
 from europe_visa_jobs.connectors.recruitee import RecruiteeConnector
 from europe_visa_jobs.connectors.smartrecruiters import SmartRecruitersConnector
@@ -32,7 +33,12 @@ def mock_client(payload, *, status=200, content_type="application/json"):
 
 
 @pytest.mark.asyncio
-async def test_additional_provider_connectors_normalize_public_shapes():
+async def test_additional_provider_connectors_normalize_public_shapes(monkeypatch):
+    monkeypatch.setattr(
+        url_security,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
     source = SourceConfig(provider=ATSProvider.RECRUITEE, company_name="Acme", slug="acme", default_country="Germany")
     async with mock_client({"offers": [{"id": 1, "title": "Backend Engineer", "location": "Berlin", "url": "https://acme.recruitee.com/o/1"}]}) as client:
         assert (await RecruiteeConnector(client, source).fetch_jobs())[0].country == "Germany"
@@ -53,6 +59,11 @@ async def test_additional_provider_connectors_normalize_public_shapes():
 
 @pytest.mark.asyncio
 async def test_public_fetch_cache_retry_and_blocked(monkeypatch):
+    monkeypatch.setattr(
+        url_security,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
     async def no_sleep(_delay):
         return None
 

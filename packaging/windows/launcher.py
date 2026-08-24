@@ -549,6 +549,8 @@ def smoke_test(data_dir: Path) -> int:
                 raise RuntimeError("The bundled market catalog contains no active jobs.")
         if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1":
             seed_smoke_data()
+        if os.environ.get("CAREERRADAR_SMOKE_SYNC") == "1":
+            refresh_jobs(data_dir)
         services.start()
         health = read_json(f"{API_URL}/health")
         from europe_visa_jobs import __version__

@@ -63,7 +63,7 @@ jobs:
           if ($backendVersion -ne $webVersion) {
             throw "Backend version $backendVersion does not match web version $webVersion"
           }
-          python scripts/validate_release_inputs.py --require-snapshot
+          python scripts/validate_release_inputs.py --require-snapshot --require-input-hashes
 
       - name: Install and build web production bundle
         shell: pwsh
@@ -336,6 +336,12 @@ jobs:
             Remove-Item Env:CAREERRADAR_SMOKE_SEED -ErrorAction SilentlyContinue
             Remove-Item Env:CAREERRADAR_REQUIRE_BUNDLED_CATALOG -ErrorAction SilentlyContinue
           }
+
+      - name: Verify two market-data cycles through the same installed runtime
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP "Career Radar Installed"
+          python scripts/windows_market_cycle_smoke.py --exe "$installDir/CareerRadar.exe"
 
   publish-release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

@@ -9,6 +9,11 @@ import httpx
 from europe_visa_jobs.discovery.http import PublicFetchError, PublicResponse, fetch_public
 from europe_visa_jobs.discovery.patterns import IdentifiedSource
 from europe_visa_jobs.schemas import ATSProvider, SourceValidation
+from europe_visa_jobs.utils.url_security import (
+    UnsafeUrlError,
+    provider_allowed_hosts,
+    validate_public_http_url,
+)
 
 
 def _json(body: bytes) -> Any:
@@ -78,17 +83,18 @@ async def validate_candidate(
     probe_only: bool = False,
 ) -> SourceValidation:
     endpoint = candidate.api_url or candidate.canonical_url
+    allowed_hosts = provider_allowed_hosts(candidate.provider.value, endpoint)
     try:
         if probe_only and candidate.provider not in {ATSProvider.WORKDAY, ATSProvider.WORKABLE, ATSProvider.ASHBY}:
             try:
-                public = await fetch_public(client, endpoint, method="HEAD")
+                public = await fetch_public(client, endpoint, method="HEAD", allowed_hosts=allowed_hosts)
             except PublicFetchError as exc:
                 # A few hosted career pages reject HEAD even though their GET
                 # endpoint is public. Only fall back for method/transport-shaped
                 # errors; preserve real 404/403/429 evidence.
                 if exc.status_code not in {405, 501}:
                     raise
-                public = await fetch_public(client, endpoint)
+                    public = await fetch_public(client, endpoint, allowed_hosts=allowed_hosts)
             return SourceValidation(
                 valid=True,
                 provider=candidate.provider,
@@ -101,20 +107,29 @@ async def validate_candidate(
                 metadata={"duration_ms": public.duration_ms, "probe_only": True},
             )
         if candidate.provider is ATSProvider.WORKDAY:
+            try:
+                validate_public_http_url(endpoint, allowed_hosts=allowed_hosts)
+            except UnsafeUrlError as exc:
+                raise PublicFetchError(f"unsafe Workday endpoint: {exc}", category="unsafe_url") from exc
             response = await client.post(endpoint, json={"appliedFacets": {}, "limit": 1}, timeout=30)
             if response.status_code >= 400:
                 raise PublicFetchError(f"workday endpoint returned HTTP {response.status_code}", status_code=response.status_code, category="http_error")
             public = PublicResponse(response.status_code, dict(response.headers), response.content, 0)
         else:
             try:
-                public = await fetch_public(client, endpoint, params={"content": "false"} if candidate.provider is ATSProvider.GREENHOUSE else None)
+                public = await fetch_public(
+                    client,
+                    endpoint,
+                    params={"content": "false"} if candidate.provider is ATSProvider.GREENHOUSE else None,
+                    allowed_hosts=allowed_hosts,
+                )
             except PublicFetchError as exc:
                 if candidate.provider is not ATSProvider.ASHBY or exc.status_code != 403:
                     raise
                 # Ashby's API is currently fronted by a Cloudflare policy that
                 # blocks this public service, while the hosted board renders the
                 # same public posting list in window.__appData.
-                public = await fetch_public(client, candidate.canonical_url)
+                public = await fetch_public(client, candidate.canonical_url, allowed_hosts=allowed_hosts)
         company_name: str | None = None
         count = 0
         if candidate.provider is ATSProvider.PERSONIO:

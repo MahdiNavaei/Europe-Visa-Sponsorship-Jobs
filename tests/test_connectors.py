@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from europe_visa_jobs.connectors.ashby import AshbyConnector
+from europe_visa_jobs.connectors.base import ConnectorError
 from europe_visa_jobs.connectors.greenhouse import GreenhouseConnector
 from europe_visa_jobs.connectors.lever import LeverConnector
 from europe_visa_jobs.connectors.personio import PersonioConnector
@@ -52,6 +53,19 @@ async def test_greenhouse_connector_normalizes_job():
     assert jobs[0].job_family == JobFamily.AI_ML
     assert "visa sponsorship" in jobs[0].description
     assert jobs[0].posted_at is None
+
+
+@pytest.mark.asyncio
+async def test_connector_rejects_greenhouse_endpoint_outside_provider_allowlist():
+    source = SourceConfig(
+        provider=ATSProvider.GREENHOUSE,
+        company_name="Acme",
+        slug="acme",
+        api_url="https://attacker.example/jobs",
+    )
+    async with client_for({"jobs": []}) as client:
+        with pytest.raises(ConnectorError, match="provider allowlist"):
+            await GreenhouseConnector(client, source).fetch_jobs()
 
 
 @pytest.mark.asyncio
