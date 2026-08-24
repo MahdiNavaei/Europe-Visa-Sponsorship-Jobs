@@ -5,7 +5,7 @@ The Windows release is the easiest way to run Career Radar locally. It is self-c
 ## Install
 
 1. Open the GitHub **Releases** page.
-2. Download the setup file matching the release version (for example, `CareerRadar-Setup-v1.1.0.exe`).
+2. Download the setup file matching the release version (for example, `CareerRadar-Setup-v1.1.4.exe`).
 3. Run the installer.
 4. Launch **Career Radar** from the Start menu (or create the optional desktop shortcut).
 
@@ -16,8 +16,9 @@ On first launch, the v1.1 release package will:
 - starts the bundled FastAPI backend,
 - starts the bundled production Next.js application with its bundled Node runtime,
 - bootstraps the generated live-verified source registry and official sponsor-evidence cache,
-- fetches the monitored public ATS feeds,
-- opens the application in the default browser.
+- opens the application in the default browser as soon as the local API and web
+  server are ready, and
+- synchronizes the central catalog in a background worker.
 
 No development tools are required.
 
@@ -33,13 +34,15 @@ This includes the SQLite database, refresh metadata, and launcher logs. Uninstal
 
 ## Job refresh behavior
 
-- The first launch fetches live jobs before opening the browser.
+- The first launch does not wait for a multi-board ATS sweep. The UI becomes
+  usable immediately after local services start; the bundled source snapshot and
+  any cached catalog remain the offline fallback while the background sync runs.
 - Later launches open immediately.
 - If the local feed data is older than 24 hours, refresh runs in the background.
 - While the launcher remains open, another refresh is scheduled every 24 hours.
 - The launcher also exposes a **Refresh jobs** button.
 
-A refresh can partially succeed if an upstream ATS is unavailable. Existing data remains usable and the launcher reports that one or more feeds could not refresh.
+A refresh can partially succeed if an upstream ATS is unavailable. Existing data remains usable and the launcher reports that one or more feeds could not refresh. If central sync fails and the packaged catalog is used, the UI labels it as a stale bundled fallback, shows its generation time, and does not claim a new successful sync.
 
 ## What is bundled
 
@@ -66,7 +69,7 @@ network call.
 
 ## Portable package
 
-Each release contains a versioned portable archive (for example, `CareerRadar-Portable-v1.1.0.zip`) alongside the
+Each release contains a versioned portable archive (for example, `CareerRadar-Portable-v1.1.4.zip`) alongside the
 installer when its clean smoke test passes. Extract it and run `CareerRadar.exe`;
 it has the same dependency-free runtime as the installer.
 
@@ -74,6 +77,6 @@ it has the same dependency-free runtime as the installer.
 
 `SHA256SUMS.txt` in the release contains SHA-256 hashes for the installer and portable ZIP.
 
-## Windows SmartScreen
+## Windows code signing
 
-The current v1 Windows binary is not Authenticode-signed because the project does not yet have a Windows code-signing certificate. Windows SmartScreen may therefore show an **Unknown publisher** warning. The release workflow builds the binaries from the repository source and publishes SHA-256 checksums alongside them.
+Tagged release artifacts are Authenticode-signed and timestamped. The release workflow refuses to publish a tag unless the repository secrets `WINDOWS_CERTIFICATE_BASE64` (a base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` are configured. Pull-request artifacts may remain unsigned and are test-only.

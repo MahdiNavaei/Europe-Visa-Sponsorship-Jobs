@@ -19,7 +19,7 @@ export interface PageResult<T> {
   total: number;
 }
 
-export interface Job {
+export interface JobSummary {
   id: number;
   company_id: number;
   external_id: string;
@@ -27,7 +27,6 @@ export interface Job {
   source_slug: string;
   company_name: string;
   title: string;
-  description: string;
   location: string;
   country: string | null;
   department: string | null;
@@ -43,6 +42,15 @@ export interface Job {
   seniority: string | null;
   eligibility_status: EligibilityStatus | null;
   eligibility_score: number | null;
+  eligibility_assessed_at?: string | null;
+  classification_status?: "technical" | "nontechnical" | "classification_unknown";
+  job_sponsorship_signal?: "confirmed_yes" | "confirmed_no" | "not_mentioned" | "conflicting";
+  company_sponsor_status?: "verified_registry" | "not_found" | "not_applicable" | "unresolved";
+  final_candidate_eligibility?: "eligible" | "unknown" | "rejected";
+}
+
+export interface Job extends JobSummary {
+  description?: string;
 }
 
 export interface Evidence {
@@ -55,6 +63,7 @@ export interface Evidence {
 }
 
 export interface JobDetail extends Job {
+  description: string;
   evidence: Evidence[];
 }
 
@@ -65,6 +74,9 @@ export interface Company {
   country: string | null;
   career_url: string | null;
   sponsor_verified: boolean;
+  name_quality: "verified" | "untrusted" | string;
+  registry_status: "verified_registry" | "not_found_registry" | "identity_untrusted";
+  job_sponsorship_status: "confirmed_yes" | "confirmed_no" | "not_mentioned" | "conflicting";
 }
 
 export interface CompanyIntelligence {
@@ -74,6 +86,7 @@ export interface CompanyIntelligence {
   negative_signals: string[];
   active_jobs: number;
   eligible_jobs: number;
+  jobs_total: number;
   jobs: Job[];
 }
 
@@ -83,6 +96,27 @@ export interface Stats {
   rejected_jobs: number;
   unknown_jobs: number;
   companies: number;
+}
+
+export interface CatalogSyncStatus {
+  state: "not_started" | "syncing" | "success" | "failed" | "stale_fallback";
+  started_at?: string;
+  completed_at?: string;
+  last_successful_sync?: string;
+  next_scheduled_sync?: string | null;
+  dataset_version?: string | null;
+  generated_at?: string | null;
+  sources_loaded?: number | null;
+  jobs_loaded?: number | null;
+  partial_success?: boolean;
+  successful_sources?: number | null;
+  failed_sources?: number | null;
+  sources_updated?: number | null;
+  jobs_added?: number | null;
+  jobs_changed?: number | null;
+  jobs_removed?: number | null;
+  degraded_providers?: string[];
+  error?: string | null;
 }
 
 export interface Coverage {
@@ -124,6 +158,7 @@ export interface SourceHealth {
   last_http_status: number | null;
   last_error_category: string | null;
   last_error: string | null;
+  enumeration_completeness?: "complete" | "partial" | "unknown" | string;
 }
 
 export interface Candidate {
@@ -140,6 +175,23 @@ export interface Candidate {
   excluded_locations: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface CandidateCreated extends Candidate {
+  access_token: string;
+}
+
+export interface CandidateExport {
+  candidate: Candidate;
+  job_states: Array<{
+    job_id: number;
+    saved: boolean;
+    application_status: ApplicationStatus;
+    note: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+  exported_at: string;
 }
 
 export interface CandidateInput {

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from europe_visa_jobs.db.models import Candidate, Company, Job, JobEvidence, SponsorRecord
 from europe_visa_jobs.intelligence.job_profile import analyze_job
@@ -17,9 +19,35 @@ from europe_visa_jobs.schemas import (
     JobFamily,
     NormalizedJob,
 )
-from europe_visa_jobs.utils import classify_role, normalize_company_name, normalize_country
+from europe_visa_jobs.utils import (
+    classify_role,
+    company_name_quality,
+    normalize_company_name,
+    normalize_country,
+)
 
-_TRACKING_QUERY_KEYS = {"fbclid", "gclid", "ref", "source", "utm_campaign", "utm_medium", "utm_source", "utm_term"}
+_TRACKING_QUERY_KEYS = {
+    "fbclid",
+    "gclid",
+    "ref",
+    "source",
+    "utm_campaign",
+    "utm_medium",
+    "utm_source",
+    "utm_term",
+}
+
+
+def _job_sponsorship_signal(assessment: EligibilityAssessment) -> str:
+    positive = any(item.kind.value == "job_positive" for item in assessment.evidence)
+    negative = any(item.kind.value == "job_negative" for item in assessment.evidence)
+    if positive and negative:
+        return "conflicting"
+    if positive:
+        return "confirmed_yes"
+    if negative:
+        return "confirmed_no"
+    return "not_mentioned"
 
 
 def canonicalize_apply_url(value: str | None) -> str | None:
@@ -28,13 +56,17 @@ def canonicalize_apply_url(value: str | None) -> str | None:
     parts = urlsplit(value.strip())
     if not parts.netloc:
         return None
-    query = urlencode([
-        (key, item)
-        for key, item in parse_qsl(parts.query, keep_blank_values=True)
-        if key.casefold() not in _TRACKING_QUERY_KEYS
-    ])
+    query = urlencode(
+        [
+            (key, item)
+            for key, item in parse_qsl(parts.query, keep_blank_values=True)
+            if key.casefold() not in _TRACKING_QUERY_KEYS
+        ]
+    )
     path = parts.path.rstrip("/") or "/"
-    return urlunsplit((parts.scheme.casefold() or "https", parts.netloc.casefold(), path, query, ""))
+    return urlunsplit(
+        (parts.scheme.casefold() or "https", parts.netloc.casefold(), path, query, "")
+    )
 
 
 class Repository:
@@ -49,25 +81,43 @@ class Repository:
         sponsor_verified: bool = False,
     ) -> Company:
         normalized = normalize_company_name(name)
+        quality = company_name_quality(name)
+        if quality == "untrusted":
+            digest = hashlib.sha256(name.casefold().encode("utf-8")).hexdigest()[:12]
+            normalized = f"untrusted {normalized or 'employer'} {digest}"
+        country_key = country or ""
         stmt = select(Company).where(
             Company.normalized_name == normalized,
-            Company.country == country,
+            Company.country_key == country_key,
         )
         company = self.session.scalar(stmt)
         if company is None:
-            company = Company(
-                name=name,
-                normalized_name=normalized,
-                country=country,
-                career_url=career_url,
-                sponsor_verified=sponsor_verified,
-            )
-            self.session.add(company)
-            self.session.flush()
+            try:
+                with self.session.begin_nested():
+                    company = Company(
+                        name=name,
+                        normalized_name=normalized,
+                        country=country,
+                        country_key=country_key,
+                        career_url=career_url,
+                        sponsor_verified=sponsor_verified,
+                        name_quality=quality,
+                    )
+                    self.session.add(company)
+                    self.session.flush()
+            except IntegrityError:
+                # A concurrent ingestion may have inserted the same normalized
+                # employer while this transaction was waiting on the constraint.
+                company = self.session.scalar(stmt)
+                if company is None:
+                    raise
         else:
             company.name = name
             company.career_url = career_url or company.career_url
-            company.sponsor_verified = sponsor_verified or company.sponsor_verified
+            # Registry membership is a snapshot, not a historical achievement.
+            # A removed/renamed registry entry must be able to clear this flag.
+            company.sponsor_verified = sponsor_verified
+            company.name_quality = quality
         return company
 
     def upsert_job(
@@ -75,15 +125,19 @@ class Repository:
         normalized_job: NormalizedJob,
         assessment: EligibilityAssessment,
         career_url: str | None = None,
+        classification_status: str = "technical",
     ) -> Job:
         sponsor = self.find_sponsor_record(normalized_job.company_name, normalized_job.country)
         company = self.upsert_company(
             normalized_job.company_name,
             normalized_job.country,
             career_url=career_url,
-            sponsor_verified=sponsor is not None,
+            sponsor_verified=sponsor is not None
+            and company_name_quality(normalized_job.company_name) == "verified",
         )
-        profile = analyze_job(normalized_job.title, normalized_job.description, normalized_job.job_family)
+        profile = analyze_job(
+            normalized_job.title, normalized_job.description, normalized_job.job_family
+        )
         canonical_apply_url = canonicalize_apply_url(normalized_job.apply_url)
         stmt = select(Job).where(
             Job.provider == normalized_job.provider.value,
@@ -116,6 +170,11 @@ class Repository:
                 seniority=profile.seniority.value if profile.seniority else None,
                 eligibility_status=assessment.status.value,
                 eligibility_score=assessment.score,
+                eligibility_assessed_at=assessment.assessed_at,
+                classification_status=classification_status,
+                job_sponsorship_signal=_job_sponsorship_signal(assessment),
+                company_sponsor_status="verified_registry" if sponsor is not None else "not_found",
+                final_candidate_eligibility=assessment.status.value,
             )
             self.session.add(job)
             self.session.flush()
@@ -140,6 +199,11 @@ class Repository:
             job.seniority = profile.seniority.value if profile.seniority else None
             job.eligibility_status = assessment.status.value
             job.eligibility_score = assessment.score
+            job.eligibility_assessed_at = assessment.assessed_at
+            job.classification_status = classification_status
+            job.job_sponsorship_signal = _job_sponsorship_signal(assessment)
+            job.company_sponsor_status = "verified_registry" if sponsor is not None else "not_found"
+            job.final_candidate_eligibility = assessment.status.value
             job.last_seen_at = datetime.now(UTC)
             job.active = True
             job.evidence.clear()
@@ -193,6 +257,7 @@ class Repository:
         *,
         country: str | None = None,
         status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+        include_unknown: bool = False,
         job_family: str | None = None,
         company_id: int | None = None,
         query: str | None = None,
@@ -206,6 +271,12 @@ class Repository:
             stmt = stmt.where(Job.country == country)
         if status:
             stmt = stmt.where(Job.eligibility_status == status.value)
+        elif include_unknown:
+            stmt = stmt.where(
+                Job.eligibility_status.in_(
+                    [EligibilityStatus.ELIGIBLE.value, EligibilityStatus.UNKNOWN.value]
+                )
+            )
         if job_family:
             stmt = stmt.where(Job.job_family == job_family)
         if company_id is not None:
@@ -237,6 +308,7 @@ class Repository:
         *,
         country: str | None = None,
         status: EligibilityStatus | None = EligibilityStatus.ELIGIBLE,
+        include_unknown: bool = False,
         job_family: str | None = None,
         company_id: int | None = None,
         query: str | None = None,
@@ -247,6 +319,12 @@ class Repository:
             stmt = stmt.where(Job.country == country)
         if status:
             stmt = stmt.where(Job.eligibility_status == status.value)
+        elif include_unknown:
+            stmt = stmt.where(
+                Job.eligibility_status.in_(
+                    [EligibilityStatus.ELIGIBLE.value, EligibilityStatus.UNKNOWN.value]
+                )
+            )
         if job_family:
             stmt = stmt.where(Job.job_family == job_family)
         if company_id is not None:
@@ -268,17 +346,36 @@ class Repository:
         self,
         *,
         include_unknown: bool = False,
-        limit: int = 500,
+        limit: int | None = None,
         country: str | None = None,
         role: str | None = None,
         query: str | None = None,
     ) -> list[Job]:
+        return list(self.iter_recommendation_jobs(
+            include_unknown=include_unknown,
+            country=country,
+            role=role,
+            query=query,
+            limit=limit,
+        ))
+
+    def iter_recommendation_jobs(
+        self,
+        *,
+        include_unknown: bool = False,
+        limit: int | None = None,
+        country: str | None = None,
+        role: str | None = None,
+        query: str | None = None,
+        batch_size: int = 250,
+    ):
+        """Stream recommendation candidates with bounded ORM memory."""
         statuses = [EligibilityStatus.ELIGIBLE.value]
         if include_unknown:
             statuses.append(EligibilityStatus.UNKNOWN.value)
         stmt = (
             select(Job)
-            .options(joinedload(Job.company), joinedload(Job.evidence))
+            .options(selectinload(Job.company), selectinload(Job.evidence))
             .where(Job.active.is_(True), Job.eligibility_status.in_(statuses))
         )
         if country:
@@ -301,8 +398,10 @@ class Repository:
                     Job.description.ilike(pattern),
                 )
             )
-        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc()).limit(limit)
-        return list(self.session.scalars(stmt).unique())
+        stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return self.session.scalars(stmt.execution_options(yield_per=batch_size))
 
     def get_job(self, job_id: int) -> Job | None:
         stmt = (
@@ -312,19 +411,28 @@ class Repository:
         )
         return self.session.scalars(stmt).unique().first()
 
-    def create_candidate(self, candidate: CandidateCreate) -> Candidate:
+    def create_candidate(
+        self, candidate: CandidateCreate, *, access_token_hash: str | None = None
+    ) -> Candidate:
         ontology = SkillOntology()
         item = Candidate(
+            access_token_hash=access_token_hash,
             name=candidate.name,
             target_roles=list(dict.fromkeys(candidate.target_roles)),
             skills=ontology.normalize_skills(candidate.skills),
             years_of_experience=candidate.years_of_experience,
             seniority=candidate.seniority.value if candidate.seniority else None,
-            preferred_countries=list(dict.fromkeys(normalize_country(country) for country in candidate.preferred_countries)),
+            preferred_countries=list(
+                dict.fromkeys(
+                    normalize_country(country) for country in candidate.preferred_countries
+                )
+            ),
             visa_required=candidate.visa_required,
             relocation_preference=candidate.relocation_preference.value,
             remote_preference=candidate.remote_preference.value,
-            excluded_locations=list(dict.fromkeys(item.strip() for item in candidate.excluded_locations)),
+            excluded_locations=list(
+                dict.fromkeys(item.strip() for item in candidate.excluded_locations)
+            ),
         )
         self.session.add(item)
         self.session.flush()
@@ -343,7 +451,9 @@ class Repository:
         item.visa_required = candidate.visa_required
         item.relocation_preference = candidate.relocation_preference.value
         item.remote_preference = candidate.remote_preference.value
-        item.excluded_locations = list(dict.fromkeys(value.strip() for value in candidate.excluded_locations))
+        item.excluded_locations = list(
+            dict.fromkeys(value.strip() for value in candidate.excluded_locations)
+        )
         item.updated_at = datetime.now(UTC)
         self.session.flush()
         return item
@@ -354,25 +464,85 @@ class Repository:
     def get_candidate_by_name(self, name: str) -> Candidate | None:
         return self.session.scalar(select(Candidate).where(Candidate.name == name))
 
-    def list_companies(self, *, country: str | None = None, limit: int = 100) -> list[Company]:
+    def delete_candidate(self, item: Candidate) -> None:
+        self.session.delete(item)
+        self.session.flush()
+
+    def list_companies(
+        self,
+        *,
+        country: str | None = None,
+        query: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Company]:
         stmt = select(Company)
         if country:
             stmt = stmt.where(Company.country == country)
-        stmt = stmt.order_by(Company.name).limit(limit)
+        if query and query.strip():
+            stmt = stmt.where(Company.name.ilike(f"%{query.strip()}%"))
+        stmt = stmt.order_by(Company.name).limit(limit).offset(offset)
         return list(self.session.scalars(stmt))
+
+    def count_companies(self, *, country: str | None = None, query: str | None = None) -> int:
+        stmt = select(func.count(Company.id))
+        if country:
+            stmt = stmt.where(Company.country == country)
+        if query and query.strip():
+            stmt = stmt.where(Company.name.ilike(f"%{query.strip()}%"))
+        return int(self.session.scalar(stmt) or 0)
 
     def get_company(self, company_id: int) -> Company | None:
         return self.session.get(Company, company_id)
 
-    def list_company_jobs(self, company_id: int, *, limit: int = 100) -> list[Job]:
+    def company_job_sponsorship_statuses(self, company_ids: list[int]) -> dict[int, str]:
+        """Aggregate vacancy-level sponsorship evidence without per-company queries."""
+        if not company_ids:
+            return {}
+        rows = self.session.execute(
+            select(Job.company_id, Job.job_sponsorship_signal, func.count(Job.id))
+            .where(Job.company_id.in_(company_ids), Job.active.is_(True))
+            .group_by(Job.company_id, Job.job_sponsorship_signal)
+        )
+        counts: dict[int, dict[str, int]] = {}
+        for company_id, signal, count in rows:
+            counts.setdefault(company_id, {})[signal] = int(count)
+        result: dict[int, str] = {}
+        for company_id, signals in counts.items():
+            yes = signals.get("confirmed_yes", 0)
+            no = signals.get("confirmed_no", 0)
+            if signals.get("conflicting", 0) or (yes and no):
+                result[company_id] = "conflicting"
+            elif yes:
+                result[company_id] = "confirmed_yes"
+            elif no:
+                result[company_id] = "confirmed_no"
+            else:
+                result[company_id] = "not_mentioned"
+        return result
+
+    def list_company_jobs(
+        self, company_id: int, *, limit: int | None = 100, offset: int = 0
+    ) -> list[Job]:
         stmt = (
             select(Job)
             .options(joinedload(Job.company), joinedload(Job.evidence))
             .where(Job.company_id == company_id, Job.active.is_(True))
             .order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
-            .limit(limit)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset:
+            stmt = stmt.offset(offset)
         return list(self.session.scalars(stmt).unique())
+
+    def count_company_jobs(
+        self, company_id: int, *, eligibility_status: EligibilityStatus | None = None
+    ) -> int:
+        stmt = select(func.count(Job.id)).where(Job.company_id == company_id, Job.active.is_(True))
+        if eligibility_status is not None:
+            stmt = stmt.where(Job.eligibility_status == eligibility_status.value)
+        return int(self.session.scalar(stmt) or 0)
 
     def add_sponsor_record(self, record: CompanySponsorEvidence) -> SponsorRecord:
         normalized = normalize_company_name(record.company_name)
@@ -413,6 +583,7 @@ class Repository:
         return [
             CompanySponsorEvidence(
                 company_name=item.company_name,
+                matching_name=item.normalized_name,
                 country=item.country,
                 registry_name=item.registry_name,
                 source_url=item.source_url,
@@ -441,6 +612,7 @@ class Repository:
         return [
             CompanySponsorEvidence(
                 company_name=item.company_name,
+                matching_name=item.normalized_name,
                 country=item.country,
                 registry_name=item.registry_name,
                 source_url=item.source_url,

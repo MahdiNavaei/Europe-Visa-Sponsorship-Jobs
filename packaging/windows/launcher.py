@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -25,6 +26,27 @@ API_URL = f"http://127.0.0.1:{API_PORT}"
 WEB_URL = f"http://127.0.0.1:{WEB_PORT}/en"
 REFRESH_INTERVAL = timedelta(hours=24)
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
+def configure_available_ports() -> None:
+    """Keep stable ports when available and fall back without aborting launch."""
+
+    global API_PORT, API_URL, WEB_PORT, WEB_URL
+
+    def available(preferred: int) -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind(("127.0.0.1", preferred))
+            except OSError:
+                probe.bind(("127.0.0.1", 0))
+            return int(probe.getsockname()[1])
+
+    API_PORT = available(API_PORT)
+    WEB_PORT = available(WEB_PORT)
+    while WEB_PORT == API_PORT:
+        WEB_PORT = available(0)
+    API_URL = f"http://127.0.0.1:{API_PORT}"
+    WEB_URL = f"http://127.0.0.1:{WEB_PORT}/en"
 
 
 def bundle_dir() -> Path:
@@ -50,6 +72,7 @@ def configure_runtime(data_dir: Path) -> Path:
     db_path = data_dir / "career-radar.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
     os.environ["WEB_ORIGIN"] = f"http://127.0.0.1:{WEB_PORT}"
+    os.environ["CAREERRADAR_DATA_DIR"] = str(data_dir)
     os.environ.setdefault("LOG_LEVEL", "WARNING")
     return db_path
 
@@ -125,6 +148,23 @@ def last_refresh_path(data_dir: Path) -> Path:
     return data_dir / "last-refresh.json"
 
 
+def _write_refresh_state(data_dir: Path, payload: dict[str, Any]) -> None:
+    path = last_refresh_path(data_dir)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def mark_refresh_started(data_dir: Path) -> None:
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError, TypeError):
+        loaded = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            previous = loaded
+    previous.update({"state": "syncing", "started_at": datetime.now(UTC).isoformat(), "error": None})
+    _write_refresh_state(data_dir, previous)
+
+
 def refresh_due(data_dir: Path) -> bool:
     path = last_refresh_path(data_dir)
     if not path.is_file():
@@ -139,24 +179,157 @@ def refresh_due(data_dir: Path) -> bool:
         return True
 
 
-def mark_refreshed(data_dir: Path) -> None:
-    last_refresh_path(data_dir).write_text(
-        json.dumps({"completed_at": datetime.now(UTC).isoformat()}, indent=2),
-        encoding="utf-8",
-    )
+def mark_refreshed(data_dir: Path, *, manifest: Any = None, stats: dict[str, Any] | None = None) -> None:
+    completed_at = datetime.now(UTC).isoformat()
+    metrics = stats or {}
+    _write_refresh_state(data_dir, {
+        "state": "success",
+        "completed_at": completed_at,
+        "last_successful_sync": completed_at,
+        "next_scheduled_sync": (datetime.now(UTC) + REFRESH_INTERVAL).isoformat(),
+        "dataset_version": getattr(manifest, "dataset_version", None),
+        "generated_at": getattr(manifest, "generated_at", None),
+        "sources_loaded": metrics.get("sources_loaded"),
+        "jobs_loaded": metrics.get("total_jobs"),
+        "partial_success": bool(metrics.get("failed_sources")),
+        "successful_sources": metrics.get("successful_sources"),
+        "failed_sources": metrics.get("failed_sources"),
+        "sources_updated": metrics.get("sources_updated"),
+        "jobs_added": metrics.get("jobs_added"),
+        "jobs_changed": metrics.get("jobs_changed"),
+        "jobs_removed": metrics.get("jobs_removed"),
+        "degraded_providers": metrics.get("degraded_providers", []),
+    })
+
+
+def mark_refresh_failed(data_dir: Path, error: BaseException) -> None:
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError):
+        previous = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+    previous.update({"state": "failed", "error": str(error)[:500]})
+    _write_refresh_state(data_dir, previous)
+
+
+def mark_stale_fallback(
+    data_dir: Path,
+    error: BaseException,
+    *,
+    manifest: Any = None,
+    stats: dict[str, Any] | None = None,
+) -> None:
+    """Record offline recovery without claiming a successful live sync."""
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError, TypeError):
+        loaded = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            previous = loaded
+    completed_at = datetime.now(UTC).isoformat()
+    metrics = stats or {}
+    previous.update({
+        "state": "stale_fallback",
+        "completed_at": completed_at,
+        "next_scheduled_sync": (datetime.now(UTC) + REFRESH_INTERVAL).isoformat(),
+        "dataset_version": getattr(manifest, "dataset_version", None),
+        "generated_at": getattr(manifest, "generated_at", None),
+        "jobs_loaded": metrics.get("total_jobs"),
+        "error": str(error)[:500],
+    })
+    _write_refresh_state(data_dir, previous)
 
 
 def refresh_jobs(data_dir: Path) -> None:
     from europe_visa_jobs.db.locking import database_write_lock
+    from europe_visa_jobs.db.repository import Repository
     from europe_visa_jobs.db.session import SessionLocal
     from europe_visa_jobs.db.source_registry import SourceRegistry
     from europe_visa_jobs.ingestion.cli import _ingest
     from europe_visa_jobs.ingestion.sources import load_sources
     from europe_visa_jobs.ingestion.sponsors import import_production_sponsor_evidence
 
+    mark_refresh_started(data_dir)
+    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
+    catalog_url = os.environ.get(
+        "CAREERRADAR_CATALOG_MANIFEST_URL",
+        "https://raw.githubusercontent.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/market-data/data/catalog/latest.json",
+    )
+    # Installed clients consume the centrally generated data snapshot first. A
+    # failed update leaves the prior local catalog untouched and is allowed to
+    # fall back to the packaged bootstrap for offline/first-install recovery.
+    try:
+        from europe_visa_jobs.catalog import sync_catalog
+        from europe_visa_jobs.db.session import SessionLocal
+        with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+            from sqlalchemy import select
+
+            from europe_visa_jobs.db.models import Job
+
+            before_jobs = {
+                (row.provider, row.source_slug, row.external_id): (row.title, row.description, row.active)
+                for row in session.execute(
+                    select(Job.provider, Job.source_slug, Job.external_id, Job.title, Job.description, Job.active)
+                )
+            }
+            manifest = sync_catalog(session, catalog_url, data_dir / "catalog-cache")
+            # Catalog import can create new companies, so registry reconciliation
+            # must run afterwards in the same transaction.
+            import_production_sponsor_evidence(session, sponsor_evidence)
+            session.commit()
+            stats = Repository(session).stats()
+            sources = SourceRegistry(session).list_sources(limit=100000)
+            stats["sources_loaded"] = len(sources)
+            stats["successful_sources"] = sum(
+                source.validation_state == "verified" and source.status in {"healthy", "empty"}
+                for source in sources
+            )
+            failed = [source for source in sources if source.status in {"degraded", "failing", "blocked"}]
+            stats["failed_sources"] = len(failed)
+            stats["degraded_providers"] = sorted({source.provider for source in failed})
+            after_jobs = {
+                (row.provider, row.source_slug, row.external_id): (row.title, row.description, row.active)
+                for row in session.execute(
+                    select(Job.provider, Job.source_slug, Job.external_id, Job.title, Job.description, Job.active)
+                )
+            }
+            active_before = {key for key, value in before_jobs.items() if value[2]}
+            active_after = {key for key, value in after_jobs.items() if value[2]}
+            stats["jobs_added"] = len(active_after - active_before)
+            stats["jobs_removed"] = len(active_before - active_after)
+            stats["jobs_changed"] = sum(
+                before_jobs[key][:2] != after_jobs[key][:2]
+                for key in active_before & active_after
+            )
+            stats["sources_updated"] = len(sources)
+        mark_refreshed(data_dir, manifest=manifest, stats=stats)
+        return
+    except Exception as exc:
+        central_sync_error = exc
+        mark_refresh_failed(data_dir, exc)
+        print(f"Central catalog sync unavailable; using local recovery path: {exc}")
+
+    bundled_manifest = bundle_dir() / "catalog" / "latest.json"
+    if bundled_manifest.exists():
+        try:
+            from europe_visa_jobs.catalog import import_catalog
+            from europe_visa_jobs.db.session import SessionLocal
+
+            with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+                manifest = import_catalog(session, bundled_manifest)
+                import_production_sponsor_evidence(session, sponsor_evidence)
+                session.commit()
+                stats = Repository(session).stats()
+                stats["catalog_source"] = "bundled"
+            mark_stale_fallback(
+                data_dir,
+                central_sync_error,
+                manifest=manifest,
+                stats=stats,
+            )
+            return
+        except Exception as exc:
+            print(f"Bundled catalog recovery unavailable; using source registry fallback: {exc}")
+
     sources = bundle_dir() / "config" / "sources.json"
     snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
-    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
     # The packaged catalog is a safe first-run seed. Once a source has been
     # validated, refreshes use the persistent registry and never regenerate a
     # web-scale discovery pass during desktop startup.
@@ -178,8 +351,15 @@ def refresh_jobs(data_dir: Path) -> None:
                 registry.import_config(config.model_copy(update={"manual_override": True}))
             session.commit()
         has_verified = bool(registry.list_sources(enabled_only=True, verified_only=True, limit=1))
-    asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
-    mark_refreshed(data_dir)
+    try:
+        asyncio.run(_ingest(None if has_verified else str(sources), registry_mode=has_verified))
+        with SessionLocal() as session:
+            stats = Repository(session).stats()
+            stats["sources_loaded"] = len(SourceRegistry(session).list_sources(limit=100000))
+        mark_refreshed(data_dir, stats=stats)
+    except Exception as exc:
+        mark_refresh_failed(data_dir, exc)
+        raise
 
 
 def seed_smoke_data() -> None:
@@ -348,6 +528,25 @@ def smoke_test(data_dir: Path) -> int:
         missing_resources = [str(path) for path in required_resources if not path.exists()]
         if missing_resources:
             raise RuntimeError("Embedded runtime resources are missing: " + ", ".join(missing_resources))
+        if os.environ.get("CAREERRADAR_REQUIRE_BUNDLED_CATALOG") == "1":
+            from sqlalchemy import func, select
+
+            from europe_visa_jobs.catalog import import_catalog
+            from europe_visa_jobs.db.locking import database_write_lock
+            from europe_visa_jobs.db.models import Job
+            from europe_visa_jobs.db.session import SessionLocal
+
+            bundled_manifest = bundle_dir() / "catalog" / "latest.json"
+            if not bundled_manifest.exists():
+                raise RuntimeError("The Windows package does not contain a published market catalog.")
+            with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+                import_catalog(session, bundled_manifest)
+                session.commit()
+                bundled_jobs = session.scalar(
+                    select(func.count()).select_from(Job).where(Job.active.is_(True))
+                ) or 0
+            if bundled_jobs < 1:
+                raise RuntimeError("The bundled market catalog contains no active jobs.")
         if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1":
             seed_smoke_data()
         services.start()
@@ -434,8 +633,12 @@ class LauncherWindow:
             self._ui(self.open_button.configure, state="normal")
             self._ui(self.refresh_button.configure, state="normal")
             if self.first_run:
-                self._ui(self._set_status, "First launch: fetching live European jobs. This can take a little while…")
-                self._refresh_worker(open_after=True)
+                # A bundled/migrated catalog is usable immediately. Network
+                # synchronization is deliberately background work; first launch
+                # must not wait for hundreds of ATS boards or block onboarding.
+                self._ui(self._set_status, "Career Radar is ready. Updating the job catalog in the background…")
+                self._ui(self.open_app)
+                threading.Thread(target=self._refresh_worker, daemon=True, name="career-radar-initial-sync").start()
             else:
                 self._ui(self._set_status, "Career Radar is running locally.")
                 self._ui(self.open_app)
@@ -495,6 +698,12 @@ def main() -> int:
     args = parse_args()
     data_dir = app_data_dir()
     redirect_stdio(data_dir)
+
+    if not args.smoke_test and not args.refresh_only and http_ok(f"{API_URL}/health") and http_ok(WEB_URL):
+        webbrowser.open(WEB_URL)
+        return 0
+
+    configure_available_ports()
     db_path = configure_runtime(data_dir)
 
     if args.smoke_test:
@@ -502,10 +711,6 @@ def main() -> int:
     if args.refresh_only:
         migrate_database()
         refresh_jobs(data_dir)
-        return 0
-
-    if http_ok(f"{API_URL}/health") and http_ok(WEB_URL):
-        webbrowser.open(WEB_URL)
         return 0
 
     first_run = not db_path.exists()

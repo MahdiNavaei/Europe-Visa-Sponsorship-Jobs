@@ -32,12 +32,16 @@ export function useJob(id: number) {
   return useQuery({ queryKey: ["job", id], queryFn: () => api.getJob(id), enabled: Number.isFinite(id) && id > 0 });
 }
 
-export function useCompanies(country?: string) {
-  return useQuery({ queryKey: ["companies", country], queryFn: () => api.listCompanies(country), staleTime: 60_000 });
+export function useCompanies(query = "", offset = 0) {
+  return useQuery({ queryKey: ["companies", query, offset], queryFn: () => api.listCompanies(query, offset), staleTime: 60_000 });
 }
 
-export function useCompany(id: number) {
-  return useQuery({ queryKey: ["company", id], queryFn: () => api.getCompany(id), enabled: Number.isFinite(id) && id > 0 });
+export function useCatalogStatus() {
+  return useQuery({ queryKey: ["catalog-status"], queryFn: api.getCatalogStatus, staleTime: 15_000, refetchInterval: 30_000 });
+}
+
+export function useCompany(id: number, offset = 0) {
+  return useQuery({ queryKey: ["company", id, offset], queryFn: () => api.getCompany(id, offset), enabled: Number.isFinite(id) && id > 0 });
 }
 
 export function useCandidate(id: number | null) {
@@ -106,4 +110,16 @@ export function useCreateCandidate() {
 
 export function useUpdateCandidate() {
   return useMutation({ mutationFn: ({ id, input }: { id: number; input: CandidateInput }) => api.updateCandidate(id, input) });
+}
+
+export function useExportCandidate() {
+  return useMutation({ mutationFn: (id: number) => api.exportCandidate(id) });
+}
+
+export function useDeleteCandidate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCandidate(id),
+    onSuccess: () => queryClient.clear(),
+  });
 }

@@ -2,10 +2,11 @@
 "use client";
 
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { Building2, ExternalLink, Globe2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, ExternalLink, Globe2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { PageHeading } from "@/components/common/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -22,11 +23,9 @@ export function CompaniesPage() {
   const c = useTranslations("common");
   const t = useTranslations("companies");
   const [query, setQuery] = useState("");
-  const { data, isLoading, isError, refetch } = useCompanies();
-  const filtered = useMemo(
-    () => data?.filter((company) => `${company.name} ${company.country ?? ""}`.toLowerCase().includes(query.toLowerCase())) ?? [],
-    [data, query],
-  );
+  const [offset, setOffset] = useState(0);
+  const { data: page, isLoading, isError, refetch } = useCompanies(query, offset);
+  const data = page?.items ?? [];
   const columns = useMemo(
     () => [
       columnHelper.accessor("name", {
@@ -34,7 +33,7 @@ export function CompaniesPage() {
         cell: (info) => (
           <Link href={`/${locale}/companies/${info.row.original.id}`} className="focus-ring flex items-center gap-3">
             <div className="grid size-9 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><Building2 size={16} /></div>
-            <span className="font-bold text-[var(--ink)] hover:text-[var(--accent)]">{info.getValue()}</span>
+            <span className="flex flex-wrap items-center gap-2 font-bold text-[var(--ink)] hover:text-[var(--accent)]">{info.getValue()}{info.row.original.name_quality === "untrusted" && <Badge tone="warning">{t("identityReview")}</Badge>}</span>
           </Link>
         ),
       }),
@@ -42,11 +41,23 @@ export function CompaniesPage() {
         header: t("country"),
         cell: (info) => <span className="flex items-center gap-2 text-[var(--muted)]"><Globe2 size={14} />{formatCountry(info.getValue(), locale)}</span>,
       }),
-      columnHelper.accessor("sponsor_verified", {
-        header: t("visaSignal"),
-        cell: (info) => info.getValue()
-          ? <Badge tone="success"><ShieldCheck size={12} />{c("verified")}</Badge>
-          : <Badge tone="warning">{t("evidenceReview")}</Badge>,
+      columnHelper.accessor("registry_status", {
+        header: t("registryEvidence"),
+        cell: (info) => info.getValue() === "verified_registry"
+          ? <Badge tone="success"><ShieldCheck size={12} />{t("registryMatched")}</Badge>
+          : info.getValue() === "identity_untrusted"
+            ? <Badge tone="warning">{t("identityReview")}</Badge>
+            : <Badge tone="neutral">{t("registryNotFound")}</Badge>,
+      }),
+      columnHelper.accessor("job_sponsorship_status", {
+        header: t("vacancyEvidence"),
+        cell: (info) => info.getValue() === "confirmed_yes"
+          ? <Badge tone="success">{t("vacancyYes")}</Badge>
+          : info.getValue() === "confirmed_no"
+            ? <Badge tone="warning">{t("vacancyNo")}</Badge>
+            : info.getValue() === "conflicting"
+              ? <Badge tone="warning">{t("vacancyConflicting")}</Badge>
+              : <Badge tone="neutral">{t("vacancyNotMentioned")}</Badge>,
       }),
       columnHelper.accessor("career_url", {
         header: t("website"),
@@ -57,7 +68,7 @@ export function CompaniesPage() {
     ],
     [c, locale, t],
   );
-  const table = useReactTable({ data: filtered, columns, getCoreRowModel: getCoreRowModel() });
+  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10 lg:py-14">
@@ -65,14 +76,14 @@ export function CompaniesPage() {
         eyebrow={t("eyebrow")}
         title={t("title")}
         description={t("subtitle")}
-        action={<div className="w-full sm:w-64"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("search")} aria-label={t("search")} /></div>}
+        action={<div className="w-full sm:w-64"><Input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0); }} placeholder={t("search")} aria-label={t("search")} /></div>}
       />
       <div className="mt-10">
         {isLoading ? (
           <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
         ) : isError ? (
           <EmptyState title={c("unavailable")} body={t("unavailableBody")} action={c("tryAgain")} onAction={() => void refetch()} />
-        ) : filtered.length === 0 ? (
+        ) : data.length === 0 ? (
           <EmptyState title={t("noCompanies")} body={t("trySearch")} />
         ) : (
           <div className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
@@ -98,6 +109,7 @@ export function CompaniesPage() {
             </div>
           </div>
         )}
+        {!isLoading && !isError && page && page.total > 50 && <div className="mt-4 flex items-center justify-between text-sm text-[var(--muted)]"><span>{offset + 1}–{Math.min(offset + 50, page.total)} / {page.total}</span><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}><ArrowLeft size={14} /></Button><Button variant="secondary" size="sm" disabled={offset + 50 >= page.total} onClick={() => setOffset(offset + 50)}><ArrowRight size={14} /></Button></div></div>}
       </div>
     </div>
   );

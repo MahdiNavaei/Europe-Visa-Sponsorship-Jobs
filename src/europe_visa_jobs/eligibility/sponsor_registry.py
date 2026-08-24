@@ -15,7 +15,10 @@ class SponsorRegistryStore:
             self.add(record)
 
     def add(self, record: CompanySponsorEvidence) -> None:
-        key = (record.country.casefold(), normalize_company_name(record.company_name))
+        key = (
+            record.country.casefold(),
+            normalize_company_name(record.matching_name or record.company_name),
+        )
         self._records[key] = record
 
     def find(self, company_name: str, country: str | None) -> CompanySponsorEvidence | None:

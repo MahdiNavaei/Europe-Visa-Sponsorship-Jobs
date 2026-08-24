@@ -71,7 +71,7 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 
 ## Windows desktop distribution
 
-- [ ] Setup EXE builds with version 1.0.0
+- [ ] Setup EXE builds with the release version
 - [ ] Setup, portable ZIP, and SHA256SUMS are uploaded before smoke validation
 - [ ] SHA256SUMS matches both release files
 - [ ] Silent clean install succeeds into a fresh directory
@@ -80,7 +80,7 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 - [ ] Installed runtime terminates backend and Node child processes cleanly
 - [ ] Portable ZIP extracts cleanly and passes the same no-host-runtime smoke test
 - [ ] User data remains under `%LOCALAPPDATA%\\CareerRadar` across upgrades
-- [ ] Installer is documented as unsigned and may trigger SmartScreen unknown-publisher warnings
-- [ ] v1.0.0 tag targets the final main commit
+- [ ] `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` are configured; both Windows executables have valid Authenticode signatures
+- [ ] The release tag targets the final validated main commit
 - [ ] GitHub Release attaches the exact verified Setup, Portable, and checksum files
 - [ ] Release assets are downloaded from GitHub and hashes are re-verified

@@ -290,7 +290,7 @@ test("company detail exposes evidence-based company signals and active jobs", as
   await installBaseApi(page);
   await page.goto("/en/companies/3");
   await expect(page.getByRole("heading", { name: "Northstar Labs" })).toBeVisible();
-  await expect(page.getByText("Visa friendliness")).toBeVisible();
+  await expect(page.getByText("Sponsorship evidence signal")).toBeVisible();
   await expect(page.getByText("Recognized sponsor evidence is on file.")).toBeVisible();
   await expect(page.getByText("Senior AI Engineer")).toBeVisible();
 });

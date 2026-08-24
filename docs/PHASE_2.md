@@ -103,7 +103,7 @@ GET  /api/v1/recommendations/{candidate_id}
 GET  /api/v1/recommendations/{candidate_id}/explain
 ```
 
-Recommendation responses remain lists for backward compatibility. Each recommendation includes a complete `job` payload, grouped `scores` (`overall`, `visa`, `skill`, `experience`, `country`, and `company`, all 0–100), skill coverage, matched/missing skills, `reasons`, and `warnings`. Recommendation filters are `country`, `role`, and `min_score`; `limit` and `offset` provide simple pagination, and `X-Total-Count` reports the filtered result count. `include_unknown=true` is opt-in for research and audit use. The jobs endpoint keeps `status`, `country`, and `job_family` and also accepts the UI aliases `visa_status` and `category`.
+Recommendation responses remain lists for backward compatibility. Each recommendation includes a bounded job summary (the detail endpoint retains the full description), grouped `scores` (`overall`, `visa`, `skill`, `experience`, `country`, and `company`, all 0–100), skill coverage, matched/missing skills, `reasons`, and `warnings`. Recommendation filters are `country`, `role`, and `min_score`; `limit` and `offset` provide simple pagination, and `X-Total-Count` reports the filtered result count. `include_unknown=true` is opt-in for research and audit use. The jobs endpoint keeps `status`, `country`, and `job_family` and also accepts the UI aliases `visa_status` and `category`.
 
 Example item:
 

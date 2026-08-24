@@ -13,12 +13,21 @@ class TeamtailorConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
         token = self.source.metadata.get("api_token") if isinstance(self.source.metadata, dict) else None
         if token:
-            response = await self._get(self.endpoint("https://api.teamtailor.com/v1/jobs"), headers={"Authorization": f"Bearer {token}", "X-Api-Version": "20240404"})
-            try:
-                rows = response.json()["data"]
-            except (ValueError, KeyError, TypeError) as exc:
-                raise ConnectorError("teamtailor: invalid API payload", category="invalid_response") from exc
+            rows: list[dict] = []
+            next_url: str | None = self.endpoint("https://api.teamtailor.com/v1/jobs")
+            while next_url:
+                response = await self._get(next_url, headers={"Authorization": f"Bearer {token}", "X-Api-Version": "20240404"})
+                try:
+                    payload = response.json()
+                    page = payload["data"]
+                    if not isinstance(page, list):
+                        raise TypeError
+                    rows.extend(item for item in page if isinstance(item, dict))
+                    next_url = (payload.get("links") or {}).get("next")
+                except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                    raise ConnectorError("teamtailor: invalid API payload", category="invalid_response") from exc
             return [_job(self.source, item.get("attributes", item)) for item in rows if isinstance(item, dict)]
+        self.completeness = "partial"
         response = await self._get(self.endpoint(f"https://{self.source.slug}.teamtailor.com/jobs"))
         jobs: list[NormalizedJob] = []
         marker = "application/ld+json"

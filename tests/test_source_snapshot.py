@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -66,6 +67,19 @@ def test_snapshot_rejects_small_or_unverified_records(db_session):
         validate_snapshot(payload, minimum_verified=1)
 
 
+def test_snapshot_rejects_stale_or_future_generation(db_session):
+    registry = SourceRegistry(db_session)
+    _verified_source(registry)
+    payload = build_snapshot(registry.list_sources(verified_only=True))
+    now = datetime.now(UTC)
+    payload["generated_at"] = (now - timedelta(days=15)).isoformat()
+    with pytest.raises(SnapshotValidationError, match="stale"):
+        validate_snapshot(payload, minimum_verified=1, now=now)
+    payload["generated_at"] = (now + timedelta(hours=1)).isoformat()
+    with pytest.raises(SnapshotValidationError, match="future"):
+        validate_snapshot(payload, minimum_verified=1, now=now)
+
+
 def test_snapshot_excludes_historically_verified_sources_no_longer_current(db_session):
     registry = SourceRegistry(db_session)
     source = _verified_source(registry)
@@ -91,3 +105,15 @@ def test_snapshot_bootstrap_preserves_verified_state(db_session):
     assert restored.validation_state == "verified"
     assert restored.enabled is True
     assert restored.manual_override is False
+
+
+def test_production_snapshot_bootstraps_full_verified_registry_from_empty_db(db_session):
+    configs = load_sources("config/source-registry.snapshot.json", minimum_snapshot_sources=500)
+    registry = SourceRegistry(db_session)
+    for config in configs:
+        registry.import_verified_snapshot(config)
+    db_session.commit()
+
+    assert len(configs) >= 500
+    assert len(registry.list_sources(limit=100000)) == len(configs)
+    assert all(source.validation_state == "verified" for source in registry.list_sources(limit=100000))

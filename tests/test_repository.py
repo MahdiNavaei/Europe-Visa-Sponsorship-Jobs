@@ -87,3 +87,13 @@ def test_cross_source_duplicate_is_marked_without_collapsing_distinct_rows(db_se
     assert left.duplicate_of_job_id is None
     assert right.duplicate_of_job_id == left.id
     assert len(repo.list_jobs(status=None)) == 2
+
+
+def test_untrusted_company_slug_is_not_marked_as_verified(db_session):
+    repo = Repository(db_session)
+    item = sample_job().model_copy(update={"company_name": "12345"})
+    stored = repo.upsert_job(item, EligibilityEngine().assess(item))
+    db_session.commit()
+
+    assert stored.company.name_quality == "untrusted"
+    assert stored.company.sponsor_verified is False

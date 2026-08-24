@@ -32,7 +32,14 @@ class SourceRegistry:
         if category == "blocked" or validation.http_status == 403:
             return SourceValidationState.BLOCKED.value, now + timedelta(days=14)
         if category in {"rate_limited", "timeout", "network", "server_error"} or validation.http_status == 429:
-            return SourceValidationState.RETRY_LATER.value, now + timedelta(hours=1)
+            supplied_delay = validation.metadata.get("retry_after_seconds")
+            if isinstance(supplied_delay, (int, float)) and supplied_delay >= 0:
+                # Respect the provider's deadline, within an operationally safe
+                # range that avoids both hammering and permanent starvation.
+                delay = timedelta(seconds=min(max(int(supplied_delay), 60), 7 * 24 * 60 * 60))
+            else:
+                delay = timedelta(hours=1)
+            return SourceValidationState.RETRY_LATER.value, now + delay
         if category in {"invalid_response", "endpoint_error", "http_error", "validation_exception"}:
             return SourceValidationState.TRANSIENT_FAILURE.value, now + timedelta(hours=6)
         return SourceValidationState.TRANSIENT_FAILURE.value, now + timedelta(hours=1)
@@ -273,6 +280,8 @@ class SourceRegistry:
                 source.enabled = False
             elif source.consecutive_failures >= 3:
                 source.status = SourceStatus.FAILING.value
+                # Scheduled retry selection explicitly includes verified
+                # failing rows, so this health gate is not permanent.
                 source.enabled = False
             else:
                 source.status = SourceStatus.DEGRADED.value
@@ -313,7 +322,20 @@ class SourceRegistry:
         self.session.flush()
 
     def failed_sources(self, *, limit: int | None = None) -> list[Source]:
-        return self.list_sources(statuses={SourceStatus.DEGRADED.value, SourceStatus.FAILING.value, SourceStatus.BLOCKED.value}, limit=limit)
+        now = datetime.now(UTC)
+        stmt = (
+            select(Source)
+            .where(
+                Source.status.in_(
+                    {SourceStatus.DEGRADED.value, SourceStatus.FAILING.value, SourceStatus.BLOCKED.value}
+                ),
+                or_(Source.retry_after.is_(None), Source.retry_after <= now),
+            )
+            .order_by(Source.retry_after.asc().nullsfirst(), Source.provider, Source.board_identifier)
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt))
 
     def un_ingested_verified_sources(
         self,
@@ -365,7 +387,6 @@ class SourceRegistry:
             Job.location.ilike("%europe%"),
             Job.location.ilike("%remote%eu%"),
             Job.location.ilike("%remote%europe%"),
-            Job.location.ilike("%remote%emea%"),
         )
         ai_data_ml_scope = Job.job_family.in_(["ai_ml", "data_engineering", "data_science", "mlops"])
         counts = {

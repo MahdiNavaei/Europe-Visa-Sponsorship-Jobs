@@ -18,13 +18,15 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
       - name: Compile
         run: python -m compileall -q src
       - name: Lint
@@ -48,8 +50,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -70,7 +72,7 @@ jobs:
         run: npm run test:e2e
       - name: Upload UI snapshots
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ui-snapshots
           path: apps/web/artifacts/ui/*.png
@@ -78,7 +80,7 @@ jobs:
           retention-days: 14
       - name: Upload Playwright failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-failures
           path: |
@@ -91,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
         env:
           POSTGRES_DB: visa_jobs_ci
           POSTGRES_USER: visa_jobs
@@ -107,13 +109,15 @@ jobs:
       DATABASE_URL: postgresql+psycopg://visa_jobs:visa_jobs_ci@127.0.0.1:5432/visa_jobs_ci
       PYTHONPATH: src:.
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
       - name: Install PostgreSQL runtime
-        run: python -m pip install -e ".[dev,postgres]"
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
       - name: Migration upgrade and backward-compatibility round trip
         run: |
           alembic upgrade head
@@ -158,20 +162,22 @@ jobs:
       PYTHONPATH: src:.
       WEB_ORIGIN: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
       - name: Install backend
-        run: python -m pip install -e ".[dev,postgres]"
-      - name: Validate every configured production ATS feed is live
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
+      - name: Validate the configured priority ATS smoke feeds are live
         run: python scripts/live_source_catalog_check.py
       - name: Migrate live-test database
         run: alembic upgrade head
       - name: Ingest public ATS feeds twice and validate freshness/idempotency/API
         run: python scripts/live_ingestion_e2e.py
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -209,7 +215,7 @@ jobs:
           cat /tmp/live-web.log || true
       - name: Upload live E2E failures
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: live-ingestion-e2e-failures
           path: |
@@ -221,20 +227,21 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
       - name: Python dependency audit
         run: |
-          python -m pip install -e . pip-audit
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
           pip-audit --local
       - name: Public repository safety audit
         run: python scripts/public_repo_audit.py
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -252,8 +259,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -266,7 +273,7 @@ jobs:
         run: npx --yes @lhci/cli@0.15.1 autorun --config=./lighthouserc.json
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: lighthouse-reports
           path: apps/web/artifacts/lighthouse
@@ -280,7 +287,7 @@ jobs:
       POSTGRES_PASSWORD: visa_jobs_acceptance
     steps:
       - name: Checkout fresh repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Build and start production-like stack
         run: docker compose -f docker-compose.production.yml up -d --build
       - name: Wait for healthy API and web

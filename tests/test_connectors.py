@@ -51,6 +51,29 @@ async def test_greenhouse_connector_normalizes_job():
     assert jobs[0].department == "AI"
     assert jobs[0].job_family == JobFamily.AI_ML
     assert "visa sponsorship" in jobs[0].description
+    assert jobs[0].posted_at is None
+
+
+@pytest.mark.asyncio
+async def test_greenhouse_uses_explicit_publication_date_not_update_date():
+    source = SourceConfig(provider="greenhouse", company_name="Acme", slug="acme", default_country="Germany")
+    payload = {
+        "jobs": [
+            {
+                "id": 124,
+                "title": "Backend Engineer",
+                "absolute_url": "https://boards.greenhouse.io/acme/jobs/124",
+                "location": {"name": "Berlin, Germany"},
+                "content": "Visa sponsorship is available.",
+                "first_published": "2026-08-01T08:00:00Z",
+                "updated_at": "2026-08-20T10:00:00Z",
+            }
+        ]
+    }
+    async with client_for(payload) as client:
+        jobs = await GreenhouseConnector(client, source).fetch_jobs()
+    assert jobs[0].posted_at is not None
+    assert jobs[0].posted_at.day == 1
 
 
 @pytest.mark.asyncio

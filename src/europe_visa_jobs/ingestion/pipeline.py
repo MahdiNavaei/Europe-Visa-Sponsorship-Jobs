@@ -11,7 +11,12 @@ from europe_visa_jobs.db.models import IngestionRun
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.eligibility import EligibilityEngine, SponsorRegistryStore
-from europe_visa_jobs.schemas import SourceConfig, SourceValidation
+from europe_visa_jobs.schemas import (
+    EligibilityAssessment,
+    EligibilityStatus,
+    SourceConfig,
+    SourceValidation,
+)
 from europe_visa_jobs.utils import is_supported_tech_role
 
 
@@ -68,21 +73,40 @@ async def ingest_source(
         session.add(run)
         session.flush()
 
-        technical_jobs = [job for job in fetched if is_supported_tech_role(job.title)]
-        sponsor_store = sponsor_registry or SponsorRegistryStore(repo.sponsor_evidence_for_jobs(technical_jobs))
+        sponsor_store = sponsor_registry or SponsorRegistryStore(repo.sponsor_evidence_for_jobs(fetched))
         engine = EligibilityEngine(sponsor_registry=sponsor_store)
         seen_ids: set[str] = set()
         stored = 0
         statuses: dict[str, int] = {"eligible": 0, "unknown": 0, "rejected": 0}
 
-        for job in technical_jobs:
+        for job in fetched:
             seen_ids.add(job.external_id)
-            assessment = engine.assess(job)
-            repo.upsert_job(job, assessment, career_url=source.careers_url)
+            technical = is_supported_tech_role(job.title, job.department, job.description)
+            assessment = engine.assess(job) if technical else EligibilityAssessment(
+                status=EligibilityStatus.REJECTED,
+                score=0,
+                country=job.country,
+                evidence=[],
+                hard_rejection_reasons=["nontechnical_role"],
+            )
+            repo.upsert_job(
+                job,
+                assessment,
+                career_url=source.careers_url,
+                classification_status="technical" if technical else "nontechnical",
+            )
             statuses[assessment.status.value] = statuses.get(assessment.status.value, 0) + 1
-            stored += 1
+            stored += int(technical)
 
-        repo.mark_source_jobs_inactive_except(source.provider.value, source.slug, seen_ids)
+        completeness = getattr(connector, "completeness", "complete")
+        detail_completeness = getattr(connector, "detail_completeness", "complete")
+        registry_source.source_metadata = {
+            **(registry_source.source_metadata or {}),
+            "enumeration_completeness": completeness,
+            "detail_completeness": detail_completeness,
+        }
+        if completeness == "complete":
+            repo.mark_source_jobs_inactive_except(source.provider.value, source.slug, seen_ids)
         response_headers = getattr(connector, "last_response_headers", {})
         fetch_duration_ms = getattr(connector, "last_fetch_duration_ms", 0)
         registry.record_validation(
@@ -98,7 +122,11 @@ async def ingest_source(
                 http_status=200,
                 etag=response_headers.get("etag"),
                 last_modified=response_headers.get("last-modified"),
-                metadata={"duration_ms": fetch_duration_ms},
+                metadata={
+                    "duration_ms": fetch_duration_ms,
+                    "completeness": completeness,
+                    "detail_completeness": detail_completeness,
+                },
             ),
         )
         registry_source.etag = response_headers.get("etag") or registry_source.etag

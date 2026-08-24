@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from europe_visa_jobs.schemas import CountryRule
+from europe_visa_jobs.utils.countries import EUROPEAN_COUNTRIES
 
 # Phase-1 rules deliberately encode route structure, not legal advice or volatile salary numbers.
 # Numeric thresholds should be maintained as dated datasets once salary-aware filtering is added.
@@ -45,6 +46,23 @@ _RULES: dict[str, CountryRule] = {
         notes=["Job-level permit or immigration support evidence is required by the strict phase-1 gate."],
     ),
 }
+
+# The product covers European hiring markets, not only the small set of routes
+# that had country-specific phase-1 notes originally.  These conservative
+# fallback rules deliberately do not assert sponsorship or a sponsor register;
+# they only keep a known European country from being mislabeled as unsupported.
+# JD-level evidence and the candidate-specific gate remain authoritative.
+for _country in EUROPEAN_COUNTRIES:
+    _RULES.setdefault(
+        _country,
+        CountryRule(
+            country=_country,
+            primary_routes=["Country-specific work permit route"],
+            notes=[
+                "Country coverage is geographic only; verify the current national route and employer policy before applying."
+            ],
+        ),
+    )
 
 
 class CountryRulesRegistry:

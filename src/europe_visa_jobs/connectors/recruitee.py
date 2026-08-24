@@ -9,6 +9,8 @@ from europe_visa_jobs.utils import classify_role, infer_country
 class RecruiteeConnector(BaseConnector):
     """Public Recruitee offers feed; the provider exposes no sponsorship signal."""
 
+    completeness = "partial"
+
     async def fetch_jobs(self) -> list[NormalizedJob]:
         response = await self._get(self.endpoint(f"https://{self.source.slug}.recruitee.com/api/offers/"))
         try:

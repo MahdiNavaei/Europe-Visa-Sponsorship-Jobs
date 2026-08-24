@@ -122,7 +122,10 @@ This gate verifies the complete path:
 
 `.github/workflows/daily-ingest.yml` runs at `03:17 UTC` every day and can also be dispatched manually. It bootstraps `config/sources.json` into the persistent source registry when needed, then refreshes verified registry sources, marks disappeared source jobs inactive through the ingestion pipeline, and reports active/eligible/newest-posting counts. Dedicated source-discovery workflows expand the registry incrementally.
 
-The workflow intentionally fails loudly if the repository does not have a `DATABASE_URL` secret. CI can prove the network ingestion path with an ephemeral PostgreSQL service, but a deployed product needs a persistent PostgreSQL database shared with the deployed API for scheduled refreshes to persist between runs.
+The workflow uses durable PostgreSQL when `DATABASE_URL` is configured. Otherwise it
+restores and republishes a sanitized SQLite checkpoint on the `market-data` branch, so
+scheduled refresh state still survives ephemeral runners. A hosted API should use the
+persistent PostgreSQL path.
 
 "Daily refresh" means the configured public feeds are re-read every day. It does **not** mean employers are guaranteed to publish a new eligible vacancy every calendar day.
 
@@ -187,7 +190,7 @@ Visa and sponsorship results are deterministic, evidence-based signals. They are
 
 The packaged seed catalog remains explicit and auditable, but it is no longer the production source universe. Coverage grows through the persistent registry and bounded discovery workflows; `config/sources.json` is retained for bootstrap, priority sources, and deterministic fixtures.
 
-The v1.0.0 Windows binary is unsigned because the project does not have a
-code-signing certificate. Windows SmartScreen may therefore identify the
-publisher as unknown. The release must not be described as signed until
-Authenticode signing is actually configured.
+Tagged Windows releases are fail-closed: publication requires the repository secrets
+`WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD`, and both executables
+must pass Authenticode verification. Unsigned pull-request artifacts are test-only and
+may still trigger SmartScreen.

@@ -18,7 +18,39 @@ vi.mock("@/lib/api/hooks", () => ({
   }),
 }));
 
-vi.mock("next-intl", () => ({ useLocale: () => "en" }));
+vi.mock("next-intl", () => ({
+  useLocale: () => "en",
+  useTranslations: () => (key: string, values?: { count?: string; value?: string }) => {
+    const messages: Record<string, string> = {
+      eyebrow: "Source coverage",
+      title: "Verified European job coverage",
+      intro: "Only live, validated public ATS boards enter the monitored catalog.",
+      verified: "Verified sources",
+      healthy: "Healthy sources",
+      review: "Needs review",
+      activeJobs: "Active technical jobs",
+      rawJobs: "Raw jobs scanned",
+      aiMl: "AI / ML jobs",
+      feeds: "Feeds checked",
+      seeds: "Configured seeds",
+      scope: `European technical jobs in this monitored catalog: ${values?.count ?? ""}.`,
+      accounting: "Eligibility accounting",
+      accountingBody: "These counts describe the monitored technical catalog.",
+      eligible: "Eligible",
+      unknown: "Unknown",
+      rejected: "Rejected",
+      diagnostics: "Source health diagnostics",
+      diagnosticsBody: "Source health is shown by provider.",
+      provider: "Provider",
+      empty: "Empty",
+      degraded: "Degraded",
+      failingBlocked: "Failing / blocked",
+      lastRefresh: `Last successful refresh: ${values?.value ?? ""}`,
+      notRecorded: "not yet recorded",
+    };
+    return messages[key] ?? key;
+  },
+}));
 
 describe("CoveragePage", () => {
   it("makes the measured scope and unknown opportunities visible", () => {

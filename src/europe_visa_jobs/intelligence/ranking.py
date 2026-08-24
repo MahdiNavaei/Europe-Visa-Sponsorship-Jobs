@@ -84,10 +84,10 @@ class RankingEngine:
         self.config = config or load_ranking_config(config_path)
         self.matcher = matcher or CandidateMatcher()
 
-    def recommend(self, candidate: Candidate, jobs: list[Job], *, limit: int = 100) -> list[JobRecommendation]:
+    def recommend(self, candidate: Candidate, jobs: list[Job], *, limit: int | None = 100) -> list[JobRecommendation]:
         ranked = [self.score(candidate, job) for job in jobs]
         ranked.sort(key=lambda item: (-item.total_score, -(item.job.posted_at.timestamp() if item.job.posted_at else 0), item.job.id))
-        return ranked[:limit]
+        return ranked if limit is None else ranked[:limit]
 
     def score(self, candidate: Candidate, job: Job) -> JobRecommendation:
         match = self.matcher.match(candidate, job)

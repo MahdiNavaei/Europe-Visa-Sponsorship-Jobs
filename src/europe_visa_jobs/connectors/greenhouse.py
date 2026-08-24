@@ -9,12 +9,33 @@ from europe_visa_jobs.utils import classify_role, html_to_text, infer_country
 class GreenhouseConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
         url = self.endpoint(f"https://boards-api.greenhouse.io/v1/boards/{self.source.slug}/jobs")
-        response = await self._get(url, params={"content": "true"})
-        try:
-            payload = response.json()
-            rows = payload["jobs"]
-        except (ValueError, KeyError, TypeError) as exc:
-            raise ConnectorError("greenhouse: invalid jobs payload") from exc
+        rows: list[dict] = []
+        page = 1
+        while True:
+            response = await self._get(url, params={"content": "true", "page": page})
+            try:
+                payload = response.json()
+                batch = payload["jobs"]
+                if not isinstance(batch, list):
+                    raise TypeError
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ConnectorError("greenhouse: invalid jobs payload") from exc
+            rows.extend(item for item in batch if isinstance(item, dict))
+            metadata = payload.get("meta") if isinstance(payload, dict) else None
+            total = metadata.get("total") if isinstance(metadata, dict) else None
+            if isinstance(total, int):
+                self.reported_total = total
+            if len(batch) < 100:
+                break
+            if not isinstance(total, int):
+                # Some public boards return a 100-row response without the
+                # provider's total. Do not probe an unbounded next page and
+                # call it complete; preserve unseen jobs as a partial feed.
+                self.completeness = "partial"
+                break
+            if len(rows) >= total:
+                break
+            page += 1
 
         jobs: list[NormalizedJob] = []
         for row in rows:
@@ -33,7 +54,9 @@ class GreenhouseConnector(BaseConnector):
                     department=_first_name(row.get("departments")),
                     apply_url=row.get("absolute_url") or "",
                     job_url=row.get("absolute_url"),
-                    posted_at=parse_datetime(row.get("updated_at")),
+                    # Greenhouse's ``updated_at`` is a mutation timestamp, not
+                    # the publication date.  Never present it as job freshness.
+                    posted_at=parse_datetime(row.get("first_published") or row.get("published_at")),
                     job_family=classify_role(row.get("title") or ""),
                     raw=row,
                 )

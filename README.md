@@ -2,7 +2,7 @@
 
 > Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship or relocation support.
 
-**Career Radar v1.1.1** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
+**Career Radar v1.1.4** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
 
 It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, inspectable, reproducible, and backed by stored evidence.
 
@@ -13,14 +13,15 @@ It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, i
 For most Windows users, no developer setup is needed.
 
 1. Open **GitHub Releases**.
-2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.1.exe`).
+2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.4.exe`).
 3. Install and launch **Career Radar**.
 
 The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
 
 The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
 
-See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
+See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and Authenticode release requirements.
+Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
 ## Why this project exists
 
@@ -117,26 +118,31 @@ It:
 2. bootstraps the generated verified source registry and audited manual seeds,
 3. re-fetches current ATS vacancies,
 4. upserts jobs deterministically,
-5. deactivates jobs that disappeared from a successfully refreshed source,
+5. deactivates jobs that disappeared only when provider enumeration is complete,
 6. re-runs eligibility analysis,
 7. reports active, eligible, and newest-posting statistics.
 
-A deployed instance must provide a persistent PostgreSQL connection through the repository secret `DATABASE_URL`. The workflow fails loudly if that configuration is missing.
+A hosted deployment should provide persistent PostgreSQL through `DATABASE_URL`.
+When the secret is absent, the workflow restores and republishes a sanitized,
+branch-backed SQLite checkpoint instead of losing state between runners.
 
 **Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
 
-The Windows desktop runtime has its own local refresh cycle: first launch fetches live jobs, later launches refresh data when it is older than 24 hours, and users can trigger a refresh manually from the launcher.
+The Windows desktop runtime opens the local UI after migration/seed and synchronizes the
+global catalog in the background. A manual refresh remains available, but it is not
+required for routine updates. Cached catalog data remains usable offline.
 
 Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
 
 ## Source coverage and refresh
 
-`config/sources.json` is the small, auditable manual seed set. The v1.1 release
-desktop catalog is `config/source-registry.snapshot.json`, generated only from
-this project's persisted live-verified registry. Release packaging validates its shape,
-health evidence, and minimum verified-board count before the Windows binaries
-are built. The snapshot is retained across restarts; discovery refreshes happen
-outside normal desktop startup.
+`config/sources.json` is the small, auditable manual seed set. It is only a bootstrap
+input. Scheduled discovery and source health use `SOURCE_STATE_DATABASE_URL` when
+configured and otherwise use the sanitized branch-backed SQLite checkpoint. Daily
+ingestion publishes a versioned gzip catalog plus `latest.json` to the `market-data`
+branch. Existing clients consume that manifest without reinstalling.
+The packaged `config/source-registry.snapshot.json` remains an offline fallback, not the
+continuously updated source universe.
 
 The manual seeds currently include public feeds for:
 
@@ -181,6 +187,12 @@ PostgreSQL / local Windows SQLite
    ├─ candidates
    ├─ application states
    └─ ingestion runs
+
+Global market data is published separately from local candidate state. Catalog imports
+are hash-verified, staged, and transactional; profiles, saved jobs, application
+tracking, notes, and preferences are never replaced by a market-data update. See
+[`docs/data-delivery.md`](docs/data-delivery.md) for the manifest and provider
+completeness contract.
    ↓
 Candidate matching + ranking
    ↓

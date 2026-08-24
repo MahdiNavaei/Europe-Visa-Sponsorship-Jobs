@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -38,6 +39,17 @@ class FakeConnector:
                 apply_url="https://example.com/2",
             ),
         ]
+
+
+def test_company_upsert_deduplicates_unknown_country(db_session):
+    repo = Repository(db_session)
+    first = repo.upsert_company("Acme GmbH", None, career_url="https://example.com/jobs")
+    second = repo.upsert_company("Acme GmbH", None, sponsor_verified=True)
+
+    assert first.id == second.id
+    assert second.country is None
+    assert second.country_key == ""
+    assert second.sponsor_verified is True
 
 
 @pytest.mark.asyncio
@@ -149,7 +161,7 @@ class DummyAsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_ingestion_batch_continues_after_one_source_fails(monkeypatch):
+async def test_ingestion_batch_continues_after_one_source_fails(monkeypatch, tmp_path):
     sources = [
         SourceConfig(provider="greenhouse", company_name="Broken", slug="broken"),
         SourceConfig(provider="greenhouse", company_name="Healthy", slug="healthy"),
@@ -173,3 +185,20 @@ async def test_ingestion_batch_continues_after_one_source_fails(monkeypatch):
         await ingestion_cli._ingest("unused.json")
 
     assert processed == ["broken", "healthy"]
+
+    processed.clear()
+    summary_path = tmp_path / "ingestion-summary.json"
+    summary = await ingestion_cli._ingest(
+        "unused.json",
+        allow_partial=True,
+        summary_file=str(summary_path),
+    )
+    assert processed == ["broken", "healthy"]
+    assert summary == {
+        "sources_total": 2,
+        "sources_successful": 1,
+        "sources_failed": 1,
+        "failed_sources": ["greenhouse:broken"],
+        "partial_success": True,
+    }
+    assert json.loads(summary_path.read_text()) == summary
