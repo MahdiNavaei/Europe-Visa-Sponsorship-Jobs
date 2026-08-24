@@ -37,7 +37,10 @@ dev = [
 ]
 
 [dependency-groups]
-build = ["hatchling==1.32.0"]
+build = [
+  "editables==0.5",
+  "hatchling==1.32.0",
+]
 
 [project.scripts]
 evj-api = "europe_visa_jobs.api.app:run"

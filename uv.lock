@@ -422,6 +422,15 @@ wheels = [
 ]
 
 [[package]]
+name = "editables"
+version = "0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/4a/986d35164e2033ddfb44515168a281a7986e260d344cf369c3f52d4c3275/editables-0.5.tar.gz", hash = "sha256:309627d9b5c4adc0e668d8c6fa7bac1ba7c8c5d415c2d27f60f081f8e80d1de2", size = 14744, upload-time = "2023-07-24T18:26:30.08Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/be/0f2f4a5e8adc114a02b63d92bf8edbfa24db6fc602fca83c885af2479e0e/editables-0.5-py3-none-any.whl", hash = "sha256:61e5ffa82629e0d8bfe09bc44a07db3c1ab8ed1ce78a6980732870f19b5e7d4c", size = 5098, upload-time = "2023-07-24T18:26:29.046Z" },
+]
+
+[[package]]
 name = "europe-visa-sponsorship-jobs"
 version = "1.1.4"
 source = { editable = "." }
@@ -455,6 +464,7 @@ postgres = [
 
 [package.dev-dependencies]
 build = [
+    { name = "editables" },
     { name = "hatchling" },
 ]
 
@@ -483,7 +493,10 @@ requires-dist = [
 provides-extras = ["postgres", "dev"]
 
 [package.metadata.requires-dev]
-build = [{ name = "hatchling", specifier = "==1.32.0" }]
+build = [
+    { name = "editables", specifier = "==0.5" },
+    { name = "hatchling", specifier = "==1.32.0" },
+]
 
 [[package]]
 name = "fastapi"
