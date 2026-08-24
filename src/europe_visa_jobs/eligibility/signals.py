@@ -19,6 +19,14 @@ class SponsorshipSignalDetector:
 
     HARD_NEGATIVE_PATTERNS: tuple[tuple[str, str, str], ...] = (
         (
+            "no_sponsorship_generic",
+            r"\b(?:we|the\s+(?:company|employer)|this\s+(?:role|position))\s+(?:are\s+|is\s+)?"
+            r"(?:unable|not\s+able)\s+to\s+(?:provide\s+)?sponsor(?:ship)?(?:\s+(?:for\s+)?"
+            r"(?:candidates?|applicants?|this\s+(?:role|position)))?\b|"
+            r"\bthis\s+(?:role|position|vacancy)\s+is\s+not\s+eligible\s+for\s+sponsorship\b",
+            "Employer explicitly says that sponsorship is unavailable for this vacancy.",
+        ),
+        (
             "no_sponsorship",
             r"\b(?:do(?:es)?\s+not|don(?:'|\u2019)?t|cannot|can(?:'|\u2019)?t|unable\s+to|not\s+able\s+to|"
             r"will\s+not|won(?:'|\u2019)?t)\s+(?:provide|offer|support|sponsor)?\s*(?:visa|work\s+permit|"

@@ -6,10 +6,10 @@ on:
     - cron: "47 */6 * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: source-health-retry
+  group: market-data-publication
   cancel-in-progress: false
 
 jobs:
@@ -23,6 +23,20 @@ jobs:
       INGESTION_CONCURRENCY: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Restore durable branch-backed health state when no database secret is configured
+        shell: bash
+        run: |
+          mkdir -p build
+          git fetch origin market-data || true
+          if [[ -z "$DATABASE_URL" ]]; then
+            echo "DATABASE_URL=sqlite:///$GITHUB_WORKSPACE/build/discovery.sqlite" >> "$GITHUB_ENV"
+            echo "BRANCH_BACKED_HEALTH=1" >> "$GITHUB_ENV"
+            if git cat-file -e origin/market-data:data/state/discovery.sqlite.gz 2>/dev/null; then
+              git show origin/market-data:data/state/discovery.sqlite.gz | gzip -dc > build/discovery.sqlite
+            fi
+          else
+            echo "BRANCH_BACKED_HEALTH=0" >> "$GITHUB_ENV"
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -33,9 +47,8 @@ jobs:
           python -m pip install --no-build-isolation --no-deps -e .
       - name: Prepare registry
         run: |
-          test -n "$DATABASE_URL" || (echo "SOURCE_STATE_DATABASE_URL is required for durable source health state" && exit 1)
           alembic upgrade head
-          evj-ingest sources bootstrap --config config/sources.json
+          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
           evj-ingest sources discover --mode recent --limit 100
       - name: Retry failed sources without deleting prior jobs
         run: evj-ingest sources retry-failed --limit 100 --allow-partial --summary-file retry-summary.json
@@ -43,6 +56,45 @@ jobs:
         run: evj-ingest sources health --json > source-health.json
       - name: Confirm durable health state
         run: test -s source-health.json
+      - name: Publish branch-backed health checkpoint
+        if: env.BRANCH_BACKED_HEALTH == '1'
+        shell: bash
+        run: |
+          mkdir -p build/publication/data/state
+          cp build/discovery.sqlite build/publication/discovery-public.sqlite
+          python - <<'PY'
+          from sqlalchemy import create_engine, select
+          from sqlalchemy.orm import Session
+          from europe_visa_jobs.catalog.delivery import _public_metadata, _public_url
+          from europe_visa_jobs.db.models import Source
+
+          engine = create_engine("sqlite:///build/publication/discovery-public.sqlite")
+          with Session(engine) as session:
+              for source in session.scalars(select(Source)):
+                  source.source_metadata = _public_metadata(source.source_metadata or {})
+                  source.careers_url = _public_url(source.careers_url)
+                  source.board_url = _public_url(source.board_url)
+                  source.api_url = _public_url(source.api_url)
+              session.commit()
+          engine.dispose()
+          PY
+          gzip -9 -c build/publication/discovery-public.sqlite > build/publication/data/state/discovery.sqlite.gz
+          evj-ingest sources snapshot --output build/publication/source-registry.latest.json --minimum-verified 500
+          git config user.name "career-radar-bot"
+          git config user.email "career-radar-bot@users.noreply.github.com"
+          if git show-ref --verify --quiet refs/remotes/origin/market-data; then
+            git checkout -B market-data origin/market-data
+          else
+            git checkout --orphan market-data
+            git rm -rf .
+          fi
+          mkdir -p data/state
+          cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
+          cp build/publication/source-registry.latest.json source-registry.latest.json
+          git checkout --orphan "market-data-health-${GITHUB_RUN_ID}"
+          git add -A
+          git commit -m "data: health checkpoint ${GITHUB_RUN_ID}"
+          git push --force origin HEAD:market-data
       - name: Upload retry and health evidence
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

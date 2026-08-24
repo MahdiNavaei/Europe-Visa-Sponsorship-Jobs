@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 import json
 import os
 from contextlib import asynccontextmanager
@@ -183,6 +184,7 @@ def list_jobs(
     country: str | None = None,
     status: EligibilityStatus | None = None,
     visa_status: EligibilityStatus | None = None,
+    include_unknown: bool = False,
     job_family: str | None = None,
     category: str | None = None,
     company_id: int | None = Query(default=None, ge=1),
@@ -193,13 +195,13 @@ def list_jobs(
     offset: int = Query(default=0, ge=0),
 ) -> list[JobSummaryRead]:
     repo = Repository(session)
-    resolved_status = visa_status if visa_status is not None else status or EligibilityStatus.ELIGIBLE
-    browse_default = False
+    explicit_status = visa_status if visa_status is not None else status
+    resolved_status = explicit_status or (None if include_unknown else EligibilityStatus.ELIGIBLE)
     resolved_family = job_family or category
     jobs = repo.list_jobs(
         country=country,
         status=resolved_status,
-        include_unknown=browse_default,
+        include_unknown=include_unknown,
         job_family=resolved_family,
         company_id=company_id,
         query=query,
@@ -212,7 +214,7 @@ def list_jobs(
         repo.count_jobs(
             country=country,
             status=resolved_status,
-            include_unknown=browse_default,
+            include_unknown=include_unknown,
             job_family=resolved_family,
             company_id=company_id,
             query=query,
@@ -239,9 +241,21 @@ def list_companies(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[CompanyRead]:
-    companies = Repository(session).list_companies(country=country, query=query, limit=limit, offset=offset)
-    response.headers["X-Total-Count"] = str(Repository(session).count_companies(country=country, query=query))
-    return [CompanyRead.model_validate(item) for item in companies]
+    repo = Repository(session)
+    companies = repo.list_companies(country=country, query=query, limit=limit, offset=offset)
+    job_statuses = repo.company_job_sponsorship_statuses([item.id for item in companies])
+    response.headers["X-Total-Count"] = str(repo.count_companies(country=country, query=query))
+    return [
+        CompanyRead.model_validate(item).model_copy(update={
+            "registry_status": (
+                "identity_untrusted" if item.name_quality == "untrusted"
+                else "verified_registry" if item.sponsor_verified
+                else "not_found_registry"
+            ),
+            "job_sponsorship_status": job_statuses.get(item.id, "not_mentioned"),
+        })
+        for item in companies
+    ]
 
 
 @app.get("/api/v1/companies/{company_id}", response_model=CompanyIntelligenceRead)
@@ -274,7 +288,16 @@ def company_intelligence(
     eligible_jobs = repo.count_company_jobs(company_id, eligibility_status=EligibilityStatus.ELIGIBLE)
     response.headers["X-Total-Count"] = str(len(all_jobs))
     return CompanyIntelligenceRead(
-        company=CompanyRead.model_validate(company),
+        company=CompanyRead.model_validate(company).model_copy(update={
+            "registry_status": (
+                "identity_untrusted" if company.name_quality == "untrusted"
+                else "verified_registry" if company.sponsor_verified
+                else "not_found_registry"
+            ),
+            "job_sponsorship_status": repo.company_job_sponsorship_statuses([company.id]).get(
+                company.id, "not_mentioned"
+            ),
+        }),
         visa_friendliness_score=score,
         positive_signals=positive,
         negative_signals=negative,
@@ -437,7 +460,7 @@ def _rank_recommendations(
         raise HTTPException(status_code=404, detail="Candidate not found")
     authorize_candidate(request, response, candidate)
     engine = RankingEngine()
-    jobs = repo.list_recommendation_jobs(
+    jobs = repo.iter_recommendation_jobs(
         include_unknown=include_unknown,
         country=country,
         role=role,
@@ -446,29 +469,27 @@ def _rank_recommendations(
     # Personalized recommendations should not turn a visa/country match into an
     # irrelevant profession recommendation. The general Jobs page remains the
     # place to browse every eligible technical role; this endpoint is a shortlist.
-    ranked = [
-        item
-        for item in engine.recommend(candidate, jobs, limit=None)
-        if item.total_score >= min_score and item.match.role_similarity >= 0.5
-    ]
-    if sort == "newest":
-        ranked.sort(
-            key=lambda item: (
-                -(item.job.posted_at.timestamp() if item.job.posted_at else 0),
-                -item.total_score,
-                item.job.id,
-            )
-        )
-    elif sort == "visa":
-        ranked.sort(
-            key=lambda item: (
-                -item.match.visa_score,
-                -item.total_score,
-                -(item.job.posted_at.timestamp() if item.job.posted_at else 0),
-                item.job.id,
-            )
-        )
-    return ranked[offset : offset + limit], len(ranked)
+    total = 0
+    def sort_key(item: JobRecommendation):
+        posted = item.job.posted_at.timestamp() if item.job.posted_at else 0
+        if sort == "newest":
+            return (-posted, -item.total_score, item.job.id)
+        if sort == "visa":
+            return (-item.match.visa_score, -item.total_score, -posted, item.job.id)
+        return (-item.total_score, -posted, item.job.id)
+
+    def qualifying():
+        nonlocal total
+        for job in jobs:
+            item = engine.score(candidate, job)
+            if item.total_score >= min_score and item.match.role_similarity >= 0.5:
+                total += 1
+                yield item
+
+    # Keep only the prefix needed for this page. Scoring remains exact across
+    # the whole filtered catalog while memory and sort work are page-bounded.
+    ranked = heapq.nsmallest(offset + limit, qualifying(), key=sort_key)
+    return ranked[offset : offset + limit], total
 
 
 @app.get("/api/v1/recommendations/{candidate_id}/jobs/{job_id}", response_model=JobRecommendationRead)

@@ -21,7 +21,9 @@ def _public_web_url(value: object) -> object:
     if parts.username or parts.password:
         raise ValueError("URL credentials are not allowed")
     hostname = parts.hostname.casefold().rstrip(".")
-    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith((".localhost", ".local", ".internal")):
+    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(
+        (".localhost", ".local", ".internal")
+    ):
         raise ValueError("local hostnames are not allowed")
     try:
         address = ip_address(hostname)
@@ -128,7 +130,9 @@ class SourceConfig(BaseModel):
     manual_override: bool = False
     enabled: bool = True
 
-    _validate_urls = field_validator("careers_url", "board_url", "api_url", mode="before")(_public_web_url)
+    _validate_urls = field_validator("careers_url", "board_url", "api_url", mode="before")(
+        _public_web_url
+    )
 
     @property
     def board_identifier(self) -> str:
@@ -209,7 +213,9 @@ class CandidateCreate(BaseModel):
             return value.strip()
         return value
 
-    @field_validator("target_roles", "skills", "preferred_countries", "excluded_locations", mode="before")
+    @field_validator(
+        "target_roles", "skills", "preferred_countries", "excluded_locations", mode="before"
+    )
     @classmethod
     def clean_list(cls, value: object) -> object:
         if value is None:
@@ -279,6 +285,7 @@ class CompanySponsorEvidence(BaseModel):
     country: str
     registry_name: str
     source_url: str
+    matching_name: str | None = None
     verified: bool = True
 
 
@@ -341,6 +348,8 @@ class CompanyRead(BaseModel):
     career_url: str | None
     sponsor_verified: bool
     name_quality: str = "verified"
+    registry_status: str = "not_found_registry"
+    job_sponsorship_status: str = "not_mentioned"
 
     model_config = ConfigDict(from_attributes=True)
 

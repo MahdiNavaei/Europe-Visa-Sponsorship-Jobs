@@ -35,10 +35,11 @@ than being presented as a complete market census.
 | SmartRecruiters | Offset pagination follows `totalFound` or short-page exhaustion |
 | Workday | Tenant POST contract is explicitly partial until tenant pagination metadata is supplied |
 
-Scheduled discovery and source health require `SOURCE_STATE_DATABASE_URL`, a durable
-database connection. A runner-local SQLite file or an Actions artifact is not treated
-as authoritative state. Daily ingestion bootstraps the verified registry snapshot and
-loads `data/sponsors.csv.gz` before evaluating jobs.
+Scheduled discovery and source health use `SOURCE_STATE_DATABASE_URL` when configured.
+Without that secret they restore, update, sanitize, and republish a durable SQLite
+checkpoint on the `market-data` branch; runner-local state alone is never treated as
+authoritative. Daily ingestion bootstraps the verified registry snapshot and loads
+`data/sponsors.csv.gz` before evaluating jobs.
 
 The source-discovery workflow publishes its latest verified registry to
 `market-data/source-registry.latest.json`. Daily ingestion consumes that publication
@@ -46,10 +47,17 @@ before falling back to the checked-in bootstrap snapshot, so a newly verified bo
 can enter the central job dataset and then reach existing desktop installations
 without a software reinstall.
 
+The publication branch is rewritten as a single orphan snapshot under the shared
+`market-data-publication` concurrency lock. The catalog retains at most 14 compressed
+payload versions, while unreachable workflow history cannot grow without bound.
+
 The desktop status record also exposes the last successful sync, next scheduled sync,
 successful/failed source counts, degraded providers, and added/changed/removed job
 counts. A provider failure is represented as partial/degraded state while cached data
 remains available.
+If central sync fails and the desktop imports its bundled catalog, status is explicitly
+`stale_fallback`, includes the bundle generation time, and does not advance
+`last_successful_sync`.
 
 The update regression covers catalog versions N, N+1, and N+2. N+1 adds a source,
 adds a job, and changes a JD while preserving candidate tracking state. N+2 marks the

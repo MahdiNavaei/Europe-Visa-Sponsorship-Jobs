@@ -127,6 +127,9 @@ def publish_catalog(session: Session, output_dir: str | Path, *, dataset_version
         source["source_metadata"] = _public_metadata(source_item.source_metadata or {})
         for url_key in ("careers_url", "board_url", "api_url"):
             source[url_key] = _public_url(source[url_key])
+        for timestamp_key in ("verified_at", "last_success_at", "last_health_check_at", "last_checked_at"):
+            value = getattr(source_item, timestamp_key)
+            source[timestamp_key] = value.isoformat() if value is not None else None
     enabled_source_keys = {
         (source_item.provider, source_item.board_identifier)
         for source_item in source_items
@@ -207,6 +210,9 @@ def import_catalog(
             imported.status = str(source.get("status") or imported.status)
             imported.validation_state = str(source.get("validation_state") or imported.validation_state)
             imported.enabled = bool(source.get("enabled", imported.enabled))
+            for timestamp_key in ("verified_at", "last_success_at", "last_health_check_at", "last_checked_at"):
+                value = source.get(timestamp_key)
+                setattr(imported, timestamp_key, datetime.fromisoformat(value) if value else None)
     repo = Repository(session)
     seen: dict[tuple[str, str], set[str]] = {}
     source_completeness = {

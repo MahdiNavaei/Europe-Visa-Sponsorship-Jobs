@@ -41,6 +41,19 @@ def company_name_quality(value: str | None) -> str:
     digits = sum(character.isdigit() for character in raw)
     if digits > letters and digits >= 3:
         return "untrusted"
+    compact = re.sub(r"[^a-z0-9]", "", raw.casefold())
+    vowels = sum(character in "aeiouy" for character in compact)
+    # Common ingestion garbage is a single opaque alphanumeric identifier
+    # (for example ``12jlkfsk``), not an employer display name. Keep familiar
+    # brands such as 1Password/3M outside this deliberately narrow rule.
+    if (
+        compact == raw.casefold()
+        and len(compact) >= 7
+        and digits >= 2
+        and letters >= 4
+        and vowels / letters <= 0.15
+    ):
+        return "untrusted"
     if raw.startswith(("http://", "https://")) or "@" in raw:
         return "untrusted"
     return "verified"

@@ -34,11 +34,13 @@ def test_company_name_quality_does_not_trust_numeric_or_url_slugs():
     assert company_name_quality("Acme GmbH") == "verified"
     assert company_name_quality("12345") == "untrusted"
     assert company_name_quality("https://boards.greenhouse.io/acme") == "untrusted"
+    assert company_name_quality("12jlkfsk") == "untrusted"
+    assert company_name_quality("1Password") == "verified"
 
 
 def test_remote_scope_distinguishes_europe_us_and_worldwide():
     assert remote_scope("Remote - Germany") == "unspecified"
     assert remote_scope("Remote - EU") == "europe"
-    assert remote_scope("Remote - EMEA") == "europe"
+    assert remote_scope("Remote - EMEA") == "emea"
     assert remote_scope("Remote - US only") == "us_only"
     assert remote_scope("Remote - Worldwide") == "worldwide"

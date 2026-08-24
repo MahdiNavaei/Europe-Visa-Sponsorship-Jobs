@@ -68,6 +68,8 @@ def test_api_health_jobs_details_companies_and_stats(session_factory):
         companies = client.get("/api/v1/companies")
         assert companies.status_code == 200
         assert companies.json()[0]["name"] == "Acme"
+        assert companies.json()[0]["registry_status"] == "not_found_registry"
+        assert companies.json()[0]["job_sponsorship_status"] == "confirmed_yes"
         assert client.get("/api/v1/companies/9999").status_code == 404
 
         stats = client.get("/api/v1/stats").json()
@@ -168,6 +170,14 @@ def test_default_jobs_browse_is_eligible_only_and_unknown_is_explicit(session_fa
         unknown = client.get("/api/v1/jobs", params={"query": "Browse Policy", "status": "unknown"})
         assert unknown.status_code == 200
         assert {item["eligibility_status"] for item in unknown.json()} == {"unknown"}
+
+        inclusive = client.get(
+            "/api/v1/jobs",
+            params={"query": "Browse Policy", "include_unknown": "true"},
+        )
+        assert inclusive.status_code == 200
+        assert {item["eligibility_status"] for item in inclusive.json()} == {"eligible", "unknown"}
+        assert inclusive.headers["X-Total-Count"] == "2"
 
         rejected = client.get("/api/v1/jobs", params={"query": "Browse Policy", "status": "rejected"})
         assert rejected.status_code == 200

@@ -119,7 +119,7 @@ jobs:
             mkdir -p data/state
             cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
           fi
-          git add source-registry.latest.json
-          if [[ "$BRANCH_BACKED_DISCOVERY" == "1" ]]; then git add data/state/discovery.sqlite.gz; fi
-          git commit -m "data: publish verified source registry ${GITHUB_RUN_ID}" || echo "No source registry changes"
-          git push origin market-data
+          git checkout --orphan "market-data-discovery-${GITHUB_RUN_ID}"
+          git add -A
+          git commit -m "data: publish verified source registry ${GITHUB_RUN_ID}"
+          git push --force origin HEAD:market-data

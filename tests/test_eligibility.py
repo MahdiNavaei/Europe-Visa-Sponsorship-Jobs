@@ -47,6 +47,19 @@ def test_direct_no_sponsorship_phrase_is_rejected():
     assert "no_sponsorship_direct" in result.hard_rejection_reasons
 
 
+@pytest.mark.parametrize(
+    "description",
+    [
+        "We are unable to sponsor candidates for this position.",
+        "This role is not eligible for sponsorship.",
+    ],
+)
+def test_generic_sponsorship_refusals_are_rejected(description: str):
+    result = EligibilityEngine().assess(job(description))
+    assert result.status == EligibilityStatus.REJECTED
+    assert "no_sponsorship_generic" in result.hard_rejection_reasons
+
+
 def test_eu_only_restriction_is_rejected():
     result = EligibilityEngine().assess(job("Visa sponsorship may be discussed. EU citizens only."))
     assert result.status == EligibilityStatus.REJECTED

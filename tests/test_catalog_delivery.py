@@ -177,6 +177,8 @@ def test_catalog_publication_redacts_nested_source_secrets(db_session, tmp_path:
         )
     )
     source.enabled = True
+    source.verified_at = datetime(2026, 8, 23, 10, 0, tzinfo=UTC)
+    source.last_success_at = datetime(2026, 8, 24, 10, 0, tzinfo=UTC)
     source.api_url = "https://user:pass@example.com/jobs?api_key=private&locale=en#token"
     db_session.commit()
     manifest = publish_catalog(db_session, tmp_path, dataset_version="redacted")
@@ -185,6 +187,8 @@ def test_catalog_publication_redacts_nested_source_secrets(db_session, tmp_path:
     assert "api_token" not in metadata
     assert metadata["nested"] == {"region": "eu"}
     assert payload["sources"][0]["api_url"] == "https://example.com/jobs?locale=en"
+    assert payload["sources"][0]["verified_at"] == "2026-08-23T10:00:00+00:00"
+    assert payload["sources"][0]["last_success_at"] == "2026-08-24T10:00:00+00:00"
 
 
 def test_catalog_round_trips_eligibility_assessment_freshness(session_factory, tmp_path: Path) -> None:

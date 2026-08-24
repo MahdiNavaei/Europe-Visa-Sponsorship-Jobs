@@ -42,7 +42,7 @@ This includes the SQLite database, refresh metadata, and launcher logs. Uninstal
 - While the launcher remains open, another refresh is scheduled every 24 hours.
 - The launcher also exposes a **Refresh jobs** button.
 
-A refresh can partially succeed if an upstream ATS is unavailable. Existing data remains usable and the launcher reports that one or more feeds could not refresh.
+A refresh can partially succeed if an upstream ATS is unavailable. Existing data remains usable and the launcher reports that one or more feeds could not refresh. If central sync fails and the packaged catalog is used, the UI labels it as a stale bundled fallback, shows its generation time, and does not claim a new successful sync.
 
 ## What is bundled
 

@@ -158,10 +158,10 @@ jobs:
           for expired in payloads[14:]:
               expired.unlink()
           PY
-          git add data/catalog
-          if [[ "$BRANCH_BACKED_SQLITE" == "1" ]]; then git add data/state/daily.sqlite.gz; fi
-          git commit -m "data: publish catalog ${GITHUB_RUN_ID}" || echo "No catalog changes"
-          git push origin market-data
+          git checkout --orphan "market-data-catalog-${GITHUB_RUN_ID}"
+          git add -A
+          git commit -m "data: publish catalog ${GITHUB_RUN_ID}"
+          git push --force origin HEAD:market-data
 
       - name: Report upstream source failures after durable publication
         shell: bash

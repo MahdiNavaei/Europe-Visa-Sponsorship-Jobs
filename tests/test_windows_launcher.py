@@ -108,3 +108,28 @@ def test_refresh_start_preserves_last_successful_sync(tmp_path: Path) -> None:
     assert during["last_successful_sync"] == before["last_successful_sync"]
     assert during["dataset_version"] == "2026-08-24"
     assert during["error"] is None
+
+
+def test_bundled_recovery_is_reported_as_stale_not_success(tmp_path: Path) -> None:
+    launcher = load_launcher_module()
+    launcher.mark_refreshed(
+        tmp_path,
+        manifest=SimpleNamespace(dataset_version="live-v1"),
+        stats={"total_jobs": 400},
+    )
+    successful_at = launcher.json.loads(
+        launcher.last_refresh_path(tmp_path).read_text(encoding="utf-8")
+    )["last_successful_sync"]
+
+    launcher.mark_stale_fallback(
+        tmp_path,
+        RuntimeError("network unavailable"),
+        manifest=SimpleNamespace(dataset_version="bundled-v0", generated_at="2026-08-01T00:00:00Z"),
+        stats={"total_jobs": 300},
+    )
+    payload = launcher.json.loads(launcher.last_refresh_path(tmp_path).read_text(encoding="utf-8"))
+    assert payload["state"] == "stale_fallback"
+    assert payload["last_successful_sync"] == successful_at
+    assert payload["dataset_version"] == "bundled-v0"
+    assert payload["generated_at"] == "2026-08-01T00:00:00Z"
+    assert payload["error"] == "network unavailable"

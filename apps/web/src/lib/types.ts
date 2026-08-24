@@ -75,6 +75,8 @@ export interface Company {
   career_url: string | null;
   sponsor_verified: boolean;
   name_quality: "verified" | "untrusted" | string;
+  registry_status: "verified_registry" | "not_found_registry" | "identity_untrusted";
+  job_sponsorship_status: "confirmed_yes" | "confirmed_no" | "not_mentioned" | "conflicting";
 }
 
 export interface CompanyIntelligence {
@@ -97,7 +99,7 @@ export interface Stats {
 }
 
 export interface CatalogSyncStatus {
-  state: "not_started" | "syncing" | "success" | "failed";
+  state: "not_started" | "syncing" | "success" | "failed" | "stale_fallback";
   started_at?: string;
   completed_at?: string;
   last_successful_sync?: string;

@@ -210,6 +210,33 @@ def mark_refresh_failed(data_dir: Path, error: BaseException) -> None:
     _write_refresh_state(data_dir, previous)
 
 
+def mark_stale_fallback(
+    data_dir: Path,
+    error: BaseException,
+    *,
+    manifest: Any = None,
+    stats: dict[str, Any] | None = None,
+) -> None:
+    """Record offline recovery without claiming a successful live sync."""
+    previous: dict[str, Any] = {}
+    with suppress(OSError, json.JSONDecodeError, TypeError):
+        loaded = json.loads(last_refresh_path(data_dir).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            previous = loaded
+    completed_at = datetime.now(UTC).isoformat()
+    metrics = stats or {}
+    previous.update({
+        "state": "stale_fallback",
+        "completed_at": completed_at,
+        "next_scheduled_sync": (datetime.now(UTC) + REFRESH_INTERVAL).isoformat(),
+        "dataset_version": getattr(manifest, "dataset_version", None),
+        "generated_at": getattr(manifest, "generated_at", None),
+        "jobs_loaded": metrics.get("total_jobs"),
+        "error": str(error)[:500],
+    })
+    _write_refresh_state(data_dir, previous)
+
+
 def refresh_jobs(data_dir: Path) -> None:
     from europe_visa_jobs.db.locking import database_write_lock
     from europe_visa_jobs.db.repository import Repository
@@ -220,6 +247,7 @@ def refresh_jobs(data_dir: Path) -> None:
     from europe_visa_jobs.ingestion.sponsors import import_production_sponsor_evidence
 
     mark_refresh_started(data_dir)
+    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
     catalog_url = os.environ.get(
         "CAREERRADAR_CATALOG_MANIFEST_URL",
         "https://raw.githubusercontent.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/market-data/data/catalog/latest.json",
@@ -242,6 +270,9 @@ def refresh_jobs(data_dir: Path) -> None:
                 )
             }
             manifest = sync_catalog(session, catalog_url, data_dir / "catalog-cache")
+            # Catalog import can create new companies, so registry reconciliation
+            # must run afterwards in the same transaction.
+            import_production_sponsor_evidence(session, sponsor_evidence)
             session.commit()
             stats = Repository(session).stats()
             sources = SourceRegistry(session).list_sources(limit=100000)
@@ -271,6 +302,7 @@ def refresh_jobs(data_dir: Path) -> None:
         mark_refreshed(data_dir, manifest=manifest, stats=stats)
         return
     except Exception as exc:
+        central_sync_error = exc
         mark_refresh_failed(data_dir, exc)
         print(f"Central catalog sync unavailable; using local recovery path: {exc}")
 
@@ -282,17 +314,22 @@ def refresh_jobs(data_dir: Path) -> None:
 
             with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
                 manifest = import_catalog(session, bundled_manifest)
+                import_production_sponsor_evidence(session, sponsor_evidence)
                 session.commit()
                 stats = Repository(session).stats()
                 stats["catalog_source"] = "bundled"
-            mark_refreshed(data_dir, manifest=manifest, stats=stats)
+            mark_stale_fallback(
+                data_dir,
+                central_sync_error,
+                manifest=manifest,
+                stats=stats,
+            )
             return
         except Exception as exc:
             print(f"Bundled catalog recovery unavailable; using source registry fallback: {exc}")
 
     sources = bundle_dir() / "config" / "sources.json"
     snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
-    sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"
     # The packaged catalog is a safe first-run seed. Once a source has been
     # validated, refreshes use the persistent registry and never regenerate a
     # web-scale discovery pass during desktop startup.

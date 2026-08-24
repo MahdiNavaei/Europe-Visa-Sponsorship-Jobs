@@ -20,7 +20,7 @@ The Windows package bundles the Python backend runtime, the production Next.js s
 
 The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
 
-See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and the current unsigned-binary/SmartScreen note.
+See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and Authenticode release requirements.
 Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
 ## Why this project exists
@@ -122,7 +122,9 @@ It:
 6. re-runs eligibility analysis,
 7. reports active, eligible, and newest-posting statistics.
 
-A deployed instance must provide a persistent PostgreSQL connection through the repository secret `DATABASE_URL`. The workflow fails loudly if that configuration is missing.
+A hosted deployment should provide persistent PostgreSQL through `DATABASE_URL`.
+When the secret is absent, the workflow restores and republishes a sanitized,
+branch-backed SQLite checkpoint instead of losing state between runners.
 
 **Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
 
@@ -135,9 +137,10 @@ Career Radar refreshes configured sources daily and surfaces newly discovered el
 ## Source coverage and refresh
 
 `config/sources.json` is the small, auditable manual seed set. It is only a bootstrap
-input. Scheduled discovery and source health use the durable `SOURCE_STATE_DATABASE_URL`
-registry, and daily ingestion publishes a versioned gzip catalog plus `latest.json` to
-the `market-data` branch. Existing clients consume that manifest without reinstalling.
+input. Scheduled discovery and source health use `SOURCE_STATE_DATABASE_URL` when
+configured and otherwise use the sanitized branch-backed SQLite checkpoint. Daily
+ingestion publishes a versioned gzip catalog plus `latest.json` to the `market-data`
+branch. Existing clients consume that manifest without reinstalling.
 The packaged `config/source-registry.snapshot.json` remains an offline fallback, not the
 continuously updated source universe.
 

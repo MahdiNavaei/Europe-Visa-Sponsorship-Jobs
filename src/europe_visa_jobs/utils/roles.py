@@ -54,10 +54,29 @@ def classify_role(title: str, department: str | None = None, description: str | 
     for family, patterns in ROLE_RULES:
         if any(re.search(pattern, lowered) for pattern in patterns):
             return family
-    # Description is a secondary signal only. It can recover titles such as
-    # "Platform Specialist" when the provider supplies a technical department,
-    # without making a bare prose mention of "developer" classify a job.
-    if description and re.search(r"\b(?:python|java|javascript|kubernetes|sql|machine learning|software development)\b", description.casefold()):
+    # Description may confirm an ambiguous technical-shaped title, but it must
+    # not turn a Product Manager into an engineer just because prose mentions SQL.
+    title_lower = title.casefold()
+    department_lower = (department or "").casefold()
+    technical_title = re.search(
+        r"\b(?:platform|infrastructure|systems?|cloud|database|network|security|software|data)\b",
+        title_lower,
+    ) and re.search(
+        r"\b(?:specialist|administrator|architect|consultant|engineer|developer)\b",
+        title_lower,
+    )
+    technical_department_title = re.search(
+        r"\b(?:engineering|technology|infrastructure|it|security|data)\b",
+        department_lower,
+    ) and re.search(r"\b(?:specialist|administrator|architect|engineer|developer)\b", title_lower)
+    if (
+        description
+        and (technical_title or technical_department_title)
+        and re.search(
+            r"\b(?:python|java|javascript|kubernetes|sql|machine learning|software development)\b",
+            description.casefold(),
+        )
+    ):
         return JobFamily.SOFTWARE_ENGINEERING
     return JobFamily.OTHER
 

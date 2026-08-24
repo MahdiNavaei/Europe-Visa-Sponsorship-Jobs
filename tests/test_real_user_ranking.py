@@ -79,6 +79,13 @@ def test_role_classifier_does_not_promote_data_platform_product_roles():
     assert classify_role("Senior Service Designer - Platform Engineering") == "other"
 
 
+def test_description_keywords_only_confirm_technical_shaped_titles():
+    description = "Works with Python, SQL, Kubernetes, and software developers."
+    assert classify_role("Product Manager", description=description) == "other"
+    assert classify_role("Business Analyst", description=description) == "other"
+    assert classify_role("Platform Specialist", description=description) == "software_engineering"
+
+
 def test_matching_uses_current_title_for_stale_job_family_labels():
     assert CandidateMatcher._effective_job_family(
         type("JobStub", (), {"title": "Senior Data Platform Engineer", "job_family": "other"})()

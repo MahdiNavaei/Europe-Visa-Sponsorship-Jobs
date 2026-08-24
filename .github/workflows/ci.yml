@@ -171,7 +171,7 @@ jobs:
         run: |
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --no-build-isolation --no-deps -e .
-      - name: Validate every configured production ATS feed is live
+      - name: Validate the configured priority ATS smoke feeds are live
         run: python scripts/live_source_catalog_check.py
       - name: Migrate live-test database
         run: alembic upgrade head

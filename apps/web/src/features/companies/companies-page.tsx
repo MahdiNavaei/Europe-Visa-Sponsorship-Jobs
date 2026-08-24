@@ -41,11 +41,23 @@ export function CompaniesPage() {
         header: t("country"),
         cell: (info) => <span className="flex items-center gap-2 text-[var(--muted)]"><Globe2 size={14} />{formatCountry(info.getValue(), locale)}</span>,
       }),
-      columnHelper.accessor("sponsor_verified", {
-        header: t("visaSignal"),
-        cell: (info) => info.getValue()
-          ? <Badge tone="success"><ShieldCheck size={12} />{c("verified")}</Badge>
-          : <Badge tone="warning">{t("evidenceReview")}</Badge>,
+      columnHelper.accessor("registry_status", {
+        header: t("registryEvidence"),
+        cell: (info) => info.getValue() === "verified_registry"
+          ? <Badge tone="success"><ShieldCheck size={12} />{t("registryMatched")}</Badge>
+          : info.getValue() === "identity_untrusted"
+            ? <Badge tone="warning">{t("identityReview")}</Badge>
+            : <Badge tone="neutral">{t("registryNotFound")}</Badge>,
+      }),
+      columnHelper.accessor("job_sponsorship_status", {
+        header: t("vacancyEvidence"),
+        cell: (info) => info.getValue() === "confirmed_yes"
+          ? <Badge tone="success">{t("vacancyYes")}</Badge>
+          : info.getValue() === "confirmed_no"
+            ? <Badge tone="warning">{t("vacancyNo")}</Badge>
+            : info.getValue() === "conflicting"
+              ? <Badge tone="warning">{t("vacancyConflicting")}</Badge>
+              : <Badge tone="neutral">{t("vacancyNotMentioned")}</Badge>,
       }),
       columnHelper.accessor("career_url", {
         header: t("website"),
