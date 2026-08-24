@@ -15,7 +15,9 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A full verified-registry refresh covers 771 ATS boards. Keep the full
+    # batch and allow enough wall-clock time for public provider rate limits.
+    timeout-minutes: 60
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PYTHONPATH: src:.
