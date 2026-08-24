@@ -111,7 +111,10 @@ def _active_jobs(data_dir: Path) -> dict[str, tuple[str, int]]:
 
 
 def run(executable: Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="career-radar-market-cycle-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="career-radar-market-cycle-",
+        ignore_cleanup_errors=True,
+    ) as temporary:
         root = Path(temporary)
         _build_catalogs(root)
         handler = partial(SimpleHTTPRequestHandler, directory=str(root))
