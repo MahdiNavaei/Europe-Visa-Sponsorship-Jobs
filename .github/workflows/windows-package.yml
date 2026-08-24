@@ -78,6 +78,17 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/windows/app | Out-Null
+          New-Item -ItemType Directory -Force build/windows/catalog | Out-Null
+          git fetch origin market-data 2>$null
+          if (git cat-file -e origin/market-data:data/catalog/latest.json 2>$null) {
+            $manifest = git show origin/market-data:data/catalog/latest.json | ConvertFrom-Json
+            $payload = [IO.Path]::GetFileName($manifest.payload)
+            git show "origin/market-data:data/catalog/latest.json" | Set-Content -Encoding utf8 build/windows/catalog/latest.json
+            git show "origin/market-data:data/catalog/$payload" > "build/windows/catalog/$payload"
+            Write-Host "Bundled published market catalog $payload"
+          } else {
+            Write-Host "No durable market catalog publication exists; package uses source-registry bootstrap"
+          }
           New-Item -ItemType Directory -Force build/windows/app/runtime | Out-Null
           New-Item -ItemType Directory -Force build/windows/app/web-standalone | Out-Null
 
@@ -99,6 +110,7 @@ jobs:
             --add-data "config/ranking.yaml;config" `
             --add-data "config/sources.json;config" `
             --add-data "config/source-registry.snapshot.json;config" `
+            --add-data "build/windows/catalog;catalog" `
             --add-data "data/sponsors.csv.gz;data" `
             --add-data "data/skills.yaml;data"
 

@@ -252,6 +252,22 @@ def refresh_jobs(data_dir: Path) -> None:
         mark_refresh_failed(data_dir, exc)
         print(f"Central catalog sync unavailable; using local recovery path: {exc}")
 
+    bundled_manifest = bundle_dir() / "catalog" / "latest.json"
+    if bundled_manifest.exists():
+        try:
+            from europe_visa_jobs.catalog import import_catalog
+            from europe_visa_jobs.db.session import SessionLocal
+
+            with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+                manifest = import_catalog(session, bundled_manifest)
+                session.commit()
+                stats = Repository(session).stats()
+                stats["catalog_source"] = "bundled"
+            mark_refreshed(data_dir, manifest=manifest, stats=stats)
+            return
+        except Exception as exc:
+            print(f"Bundled catalog recovery unavailable; using source registry fallback: {exc}")
+
     sources = bundle_dir() / "config" / "sources.json"
     snapshot = bundle_dir() / "config" / "source-registry.snapshot.json"
     sponsor_evidence = bundle_dir() / "data" / "sponsors.csv.gz"

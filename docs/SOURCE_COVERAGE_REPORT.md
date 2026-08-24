@@ -1,8 +1,12 @@
 # Source coverage report
 
-Run date: 2026-08-23 (Asia/Tehran)
-Branch: `feat/scalable-source-discovery`
-Base: current `origin/main` (`380d18a3415e19b7243d938c0d01bb9e8c2009fe`)
+Run date: 2026-08-24 (Asia/Tehran)
+Branch: `fix/product-truth-continuous-data`
+Base: `ac2683f5650f6e68840a41a3771b9444c2f71918` (`v1.1.3`)
+
+This document contains historical control measurements followed by the current
+continuation evidence. Historical sections are retained for traceability and are
+not current release claims; the dated continuation section is the current evidence.
 
 This report records measured public-service results. It does not claim that an
 archive candidate is a live board until the provider endpoint has responded
@@ -10,9 +14,9 @@ successfully.
 
 ## Implementation status
 
-The scalable discovery implementation is committed in the working branch and
-merged with current main. The branch preserves the PR #6 real-user ranking/UI
-changes and the release-hardening/runtime migration from current main.
+The scalable discovery implementation and the current product-truth continuation
+are committed on the branch above. The branch preserves the earlier real-user
+ranking/UI changes and release-hardening/runtime migration from current main.
 
 The registry now persists:
 
