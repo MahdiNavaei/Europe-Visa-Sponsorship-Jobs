@@ -89,3 +89,7 @@ def test_matching_uses_current_title_for_stale_job_family_labels():
     assert CandidateMatcher._effective_job_family(
         type("JobStub", (), {"title": "Senior Engineer", "job_family": "backend"})()
     ) == "backend"
+
+
+def test_role_matching_does_not_match_short_role_names_inside_unrelated_words():
+    assert CandidateMatcher._role_similarity(["SRE"], "Werksreiniger", "other") == 0.2

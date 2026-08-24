@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: daily-ingestion
+  group: market-data-publication
   cancel-in-progress: false
 
 jobs:
@@ -42,11 +42,24 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[postgres]"
 
+      - name: Resolve authoritative source registry snapshot
+        shell: bash
+        run: |
+          mkdir -p build
+          git fetch origin market-data || true
+          if git cat-file -e origin/market-data:source-registry.latest.json 2>/dev/null; then
+            git show origin/market-data:source-registry.latest.json > build/source-registry.latest.json
+            echo "Using the durable source-discovery publication"
+          else
+            cp config/source-registry.snapshot.json build/source-registry.latest.json
+            echo "Using the checked-in bootstrap snapshot because no publication exists yet"
+          fi
+
       - name: Validate authoritative source snapshot
         run: |
           python - <<'PY'
           from europe_visa_jobs.ingestion.sources import load_sources
-          sources = load_sources("config/source-registry.snapshot.json", minimum_snapshot_sources=500)
+          sources = load_sources("build/source-registry.latest.json", minimum_snapshot_sources=500)
           assert all("example" not in source.slug.lower() for source in sources)
           print(f"validated {len(sources)} live ATS sources")
           PY
@@ -59,7 +72,7 @@ jobs:
 
       - name: Bootstrap and validate priority seeds
         run: |
-          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
+          evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
       - name: Ingest current jobs from verified registry sources

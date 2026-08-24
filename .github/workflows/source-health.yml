@@ -29,7 +29,7 @@ jobs:
         run: |
           test -n "$DATABASE_URL" || (echo "SOURCE_STATE_DATABASE_URL is required for durable source health state" && exit 1)
           alembic upgrade head
-          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
+          evj-ingest sources bootstrap --config config/sources.json
           evj-ingest sources discover --mode recent --limit 100
       - name: Retry failed sources without deleting prior jobs
         run: evj-ingest sources retry-failed --limit 100 || true

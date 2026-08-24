@@ -7,13 +7,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 import europe_visa_jobs.catalog.delivery as delivery
 from europe_visa_jobs.catalog.delivery import import_catalog, publish_catalog, sync_catalog
+from europe_visa_jobs.db.models import Base, CandidateJobState, Job
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.schemas import ATSProvider, JobFamily, NormalizedJob, SourceConfig
+from europe_visa_jobs.schemas import (
+    ATSProvider,
+    CandidateCreate,
+    JobFamily,
+    NormalizedJob,
+    SourceConfig,
+)
 
 
 def _job(external_id: str, title: str = "Backend Engineer") -> NormalizedJob:
@@ -66,6 +75,48 @@ def test_catalog_import_preserves_candidate_state(session_factory, tmp_path: Pat
         candidate = candidate_repo.create_candidate(__import__("europe_visa_jobs.schemas", fromlist=["CandidateCreate"]).CandidateCreate(name="Mahdi", target_roles=["Backend Engineer"]))
         import_catalog(client_session, tmp_path / "latest.json")
         assert client_session.get(type(candidate), candidate.id) is not None
+
+
+def test_catalog_update_n_n_plus_one_n_plus_two_preserves_state_and_partial_jobs(session_factory, tmp_path: Path) -> None:
+    client_engine = create_engine(f"sqlite:///{tmp_path / 'client.sqlite'}")
+    Base.metadata.create_all(client_engine)
+    client_factory = sessionmaker(bind=client_engine, class_=Session, expire_on_commit=False)
+    with session_factory() as source_session:
+        repo = Repository(source_session)
+        first = repo.upsert_job(_job("one"), EligibilityEngine().assess(_job("one")))
+        SourceRegistry(source_session).import_config(SourceConfig(provider="greenhouse", company_name="Acme", slug="acme"))
+        source_session.commit()
+        publish_catalog(source_session, tmp_path, dataset_version="n")
+
+        repo.upsert_job(_job("two", title="Platform Engineer"), EligibilityEngine().assess(_job("two", title="Platform Engineer")))
+        first.description = "Updated JD with visa sponsorship and relocation support."
+        source_session.commit()
+        publish_catalog(source_session, tmp_path, dataset_version="n1")
+
+    with client_factory() as client_session:
+        import_catalog(client_session, tmp_path / "latest.json")
+        candidate = Repository(client_session).create_candidate(CandidateCreate(name="Mahdi", target_roles=["Backend Engineer"]))
+        client_job = client_session.query(Job).filter_by(external_id="one").one()
+        client_session.add(CandidateJobState(candidate_id=candidate.id, job_id=client_job.id, saved=True, note="keep"))
+        client_session.commit()
+        assert client_job.description.startswith("Updated JD")
+        assert client_session.query(Job).filter_by(external_id="two").one()
+
+    with session_factory() as source_session:
+        source = SourceRegistry(source_session).get("greenhouse", "acme")
+        assert source is not None
+        source.source_metadata = {"enumeration_completeness": "partial"}
+        source_session.query(Job).filter_by(external_id="one").update({"active": False})
+        source_session.commit()
+        publish_catalog(source_session, tmp_path, dataset_version="n2")
+
+    with client_factory() as client_session:
+        import_catalog(client_session, tmp_path / "latest.json")
+        retained = client_session.query(Job).filter_by(external_id="one").one()
+        state = client_session.query(CandidateJobState).filter_by(job_id=retained.id).one()
+        assert retained.active
+        assert state.note == "keep"
+    client_engine.dispose()
 
 
 def test_catalog_sync_downloads_manifest_and_payload(monkeypatch, db_session, tmp_path: Path) -> None:

@@ -159,15 +159,24 @@ def refresh_due(data_dir: Path) -> bool:
 
 def mark_refreshed(data_dir: Path, *, manifest: Any = None, stats: dict[str, Any] | None = None) -> None:
     completed_at = datetime.now(UTC).isoformat()
+    metrics = stats or {}
     _write_refresh_state(data_dir, {
         "state": "success",
         "completed_at": completed_at,
         "last_successful_sync": completed_at,
+        "next_scheduled_sync": (datetime.now(UTC) + REFRESH_INTERVAL).isoformat(),
         "dataset_version": getattr(manifest, "dataset_version", None),
         "generated_at": getattr(manifest, "generated_at", None),
-        "sources_loaded": (stats or {}).get("sources_loaded"),
-        "jobs_loaded": (stats or {}).get("total_jobs"),
-        "partial_success": False,
+        "sources_loaded": metrics.get("sources_loaded"),
+        "jobs_loaded": metrics.get("total_jobs"),
+        "partial_success": bool(metrics.get("failed_sources")),
+        "successful_sources": metrics.get("successful_sources"),
+        "failed_sources": metrics.get("failed_sources"),
+        "sources_updated": metrics.get("sources_updated"),
+        "jobs_added": metrics.get("jobs_added"),
+        "jobs_changed": metrics.get("jobs_changed"),
+        "jobs_removed": metrics.get("jobs_removed"),
+        "degraded_providers": metrics.get("degraded_providers", []),
     })
 
 
@@ -200,10 +209,43 @@ def refresh_jobs(data_dir: Path) -> None:
         from europe_visa_jobs.catalog import sync_catalog
         from europe_visa_jobs.db.session import SessionLocal
         with SessionLocal() as session:
+            from sqlalchemy import select
+
+            from europe_visa_jobs.db.models import Job
+
+            before_jobs = {
+                (row.provider, row.source_slug, row.external_id): (row.title, row.description, row.active)
+                for row in session.execute(
+                    select(Job.provider, Job.source_slug, Job.external_id, Job.title, Job.description, Job.active)
+                )
+            }
             manifest = sync_catalog(session, catalog_url, data_dir / "catalog-cache")
             session.commit()
             stats = Repository(session).stats()
-            stats["sources_loaded"] = len(SourceRegistry(session).list_sources(limit=100000))
+            sources = SourceRegistry(session).list_sources(limit=100000)
+            stats["sources_loaded"] = len(sources)
+            stats["successful_sources"] = sum(
+                source.validation_state == "verified" and source.status in {"healthy", "empty"}
+                for source in sources
+            )
+            failed = [source for source in sources if source.status in {"degraded", "failing", "blocked"}]
+            stats["failed_sources"] = len(failed)
+            stats["degraded_providers"] = sorted({source.provider for source in failed})
+            after_jobs = {
+                (row.provider, row.source_slug, row.external_id): (row.title, row.description, row.active)
+                for row in session.execute(
+                    select(Job.provider, Job.source_slug, Job.external_id, Job.title, Job.description, Job.active)
+                )
+            }
+            active_before = {key for key, value in before_jobs.items() if value[2]}
+            active_after = {key for key, value in after_jobs.items() if value[2]}
+            stats["jobs_added"] = len(active_after - active_before)
+            stats["jobs_removed"] = len(active_before - active_after)
+            stats["jobs_changed"] = sum(
+                before_jobs[key][:2] != after_jobs[key][:2]
+                for key in active_before & active_after
+            )
+            stats["sources_updated"] = len(sources)
         mark_refreshed(data_dir, manifest=manifest, stats=stats)
         return
     except Exception as exc:

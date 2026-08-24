@@ -16,8 +16,9 @@ On first launch, the v1.1 release package will:
 - starts the bundled FastAPI backend,
 - starts the bundled production Next.js application with its bundled Node runtime,
 - bootstraps the generated live-verified source registry and official sponsor-evidence cache,
-- fetches the monitored public ATS feeds,
-- opens the application in the default browser.
+- opens the application in the default browser as soon as the local API and web
+  server are ready, and
+- synchronizes the central catalog in a background worker.
 
 No development tools are required.
 
@@ -33,7 +34,9 @@ This includes the SQLite database, refresh metadata, and launcher logs. Uninstal
 
 ## Job refresh behavior
 
-- The first launch fetches live jobs before opening the browser.
+- The first launch does not wait for a multi-board ATS sweep. The UI becomes
+  usable immediately after local services start; the bundled source snapshot and
+  any cached catalog remain the offline fallback while the background sync runs.
 - Later launches open immediately.
 - If the local feed data is older than 24 hours, refresh runs in the background.
 - While the launcher remains open, another refresh is scheduled every 24 hours.

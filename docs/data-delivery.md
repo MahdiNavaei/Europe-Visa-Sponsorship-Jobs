@@ -39,3 +39,19 @@ Scheduled discovery and source health require `SOURCE_STATE_DATABASE_URL`, a dur
 database connection. A runner-local SQLite file or an Actions artifact is not treated
 as authoritative state. Daily ingestion bootstraps the verified registry snapshot and
 loads `data/sponsors.csv.gz` before evaluating jobs.
+
+The source-discovery workflow publishes its latest verified registry to
+`market-data/source-registry.latest.json`. Daily ingestion consumes that publication
+before falling back to the checked-in bootstrap snapshot, so a newly verified board
+can enter the central job dataset and then reach existing desktop installations
+without a software reinstall.
+
+The desktop status record also exposes the last successful sync, next scheduled sync,
+successful/failed source counts, degraded providers, and added/changed/removed job
+counts. A provider failure is represented as partial/degraded state while cached data
+remains available.
+
+The update regression covers catalog versions N, N+1, and N+2. N+1 adds a source,
+adds a job, and changes a JD while preserving candidate tracking state. N+2 marks the
+source partial and omits a previously active job; the client retains that job instead
+of deactivating it.

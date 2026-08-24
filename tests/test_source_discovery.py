@@ -299,3 +299,86 @@ def test_uningested_sources_can_prioritize_observed_job_volume(db_session):
         )
         sources.append(source)
     assert registry.un_ingested_verified_sources(largest_first=True) == [sources[1], sources[0]]
+
+
+def test_two_scheduled_runs_retain_registry_state_and_skip_cached_candidates(db_session):
+    registry = SourceRegistry(db_session)
+    verified = registry.upsert_candidate(
+        SourceCandidate(
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="verified-run-one",
+            canonical_url="https://boards.greenhouse.io/verified-run-one",
+            api_url="https://boards-api.greenhouse.io/v1/boards/verified-run-one/jobs",
+            discovery_method="run_one",
+        ),
+        enabled=True,
+    )
+    registry.record_validation(
+        verified,
+        SourceValidation(
+            valid=True,
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier=verified.board_identifier,
+            canonical_url=verified.careers_url or "",
+            http_status=200,
+            job_count=4,
+        ),
+    )
+    invalid = registry.upsert_candidate(
+        SourceCandidate(
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="invalid-run-one",
+            canonical_url="https://boards.greenhouse.io/invalid-run-one",
+            discovery_method="run_one",
+        )
+    )
+    registry.record_validation(
+        invalid,
+        SourceValidation(
+            valid=False,
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier=invalid.board_identifier,
+            canonical_url=invalid.careers_url or "",
+            http_status=404,
+            error_category="not_found",
+        ),
+    )
+    cached = registry.upsert_candidate(
+        SourceCandidate(
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="cached-run-one",
+            canonical_url="https://boards.greenhouse.io/cached-run-one",
+            discovery_method="run_one",
+        )
+    )
+    registry.record_validation(
+        cached,
+        SourceValidation(
+            valid=True,
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier=cached.board_identifier,
+            canonical_url=cached.careers_url or "",
+            http_status=200,
+            job_count=2,
+        ),
+    )
+    cached.last_checked_at = datetime.now(UTC)
+    cached.retry_after = datetime.now(UTC) + timedelta(days=2)
+    db_session.commit()
+
+    new_source = registry.upsert_candidate(
+        SourceCandidate(
+            provider=ATSProvider.GREENHOUSE,
+            board_identifier="new-run-two",
+            canonical_url="https://boards.greenhouse.io/new-run-two",
+            discovery_method="run_two",
+        )
+    )
+    db_session.commit()
+
+    persisted_ids = {source.board_identifier for source in registry.list_sources()}
+    assert {"verified-run-one", "invalid-run-one", "cached-run-one", "new-run-two"} <= persisted_ids
+    assert not registry.should_validate(cached)
+    assert registry.should_validate(new_source)
+    assert invalid.validation_state == SourceValidationState.INVALID.value
+    assert invalid.retry_after is not None

@@ -29,3 +29,18 @@ def normalize_company_name(value: str) -> str:
         normalized,
     )
     return re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+
+
+def company_name_quality(value: str | None) -> str:
+    """Classify display-name trust without treating an ATS slug as an employer identity."""
+    raw = normalize_whitespace(value)
+    normalized = normalize_company_name(raw)
+    if not normalized or len(normalized) < 3 or re.fullmatch(r"[0-9\s_-]+", raw or ""):
+        return "untrusted"
+    letters = sum(character.isalpha() for character in raw)
+    digits = sum(character.isdigit() for character in raw)
+    if digits > letters and digits >= 3:
+        return "untrusted"
+    if raw.startswith(("http://", "https://")) or "@" in raw:
+        return "untrusted"
+    return "verified"

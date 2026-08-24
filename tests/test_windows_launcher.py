@@ -55,6 +55,9 @@ def test_refresh_status_is_atomic_and_exposes_success_metadata(tmp_path: Path) -
     assert payload["dataset_version"] == "2026-08-24"
     assert payload["sources_loaded"] == 12
     assert payload["jobs_loaded"] == 345
+    assert payload["next_scheduled_sync"]
+    assert payload["successful_sources"] is None
+    assert payload["degraded_providers"] == []
     assert not (tmp_path / "last-refresh.json.tmp").exists()
 
 

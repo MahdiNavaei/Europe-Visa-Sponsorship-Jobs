@@ -69,6 +69,7 @@ export interface Company {
   country: string | null;
   career_url: string | null;
   sponsor_verified: boolean;
+  name_quality: "verified" | "untrusted" | string;
 }
 
 export interface CompanyIntelligence {
@@ -95,11 +96,19 @@ export interface CatalogSyncStatus {
   started_at?: string;
   completed_at?: string;
   last_successful_sync?: string;
+  next_scheduled_sync?: string | null;
   dataset_version?: string | null;
   generated_at?: string | null;
   sources_loaded?: number | null;
   jobs_loaded?: number | null;
   partial_success?: boolean;
+  successful_sources?: number | null;
+  failed_sources?: number | null;
+  sources_updated?: number | null;
+  jobs_added?: number | null;
+  jobs_changed?: number | null;
+  jobs_removed?: number | null;
+  degraded_providers?: string[];
   error?: string | null;
 }
 

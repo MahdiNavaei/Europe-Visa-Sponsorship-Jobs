@@ -159,7 +159,11 @@ class CandidateMatcher:
         }
         if any(family in related_families.get(target, set()) for target in target_families):
             return 0.75
-        if any(role.casefold() in title_lower or title_lower in role.casefold() for role in target_roles):
+        if any(
+            re.search(rf"(?<!\w){re.escape(role.casefold())}(?!\w)", title_lower)
+            or re.search(rf"(?<!\w){re.escape(title_lower)}(?!\w)", role.casefold())
+            for role in target_roles
+        ):
             return 0.85
         return 0.2
 

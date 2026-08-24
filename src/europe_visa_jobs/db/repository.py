@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -17,7 +18,12 @@ from europe_visa_jobs.schemas import (
     JobFamily,
     NormalizedJob,
 )
-from europe_visa_jobs.utils import classify_role, normalize_company_name, normalize_country
+from europe_visa_jobs.utils import (
+    classify_role,
+    company_name_quality,
+    normalize_company_name,
+    normalize_country,
+)
 
 _TRACKING_QUERY_KEYS = {"fbclid", "gclid", "ref", "source", "utm_campaign", "utm_medium", "utm_source", "utm_term"}
 
@@ -61,6 +67,10 @@ class Repository:
         sponsor_verified: bool = False,
     ) -> Company:
         normalized = normalize_company_name(name)
+        quality = company_name_quality(name)
+        if quality == "untrusted":
+            digest = hashlib.sha256(name.casefold().encode("utf-8")).hexdigest()[:12]
+            normalized = f"untrusted {normalized or 'employer'} {digest}"
         stmt = select(Company).where(
             Company.normalized_name == normalized,
             Company.country == country,
@@ -73,6 +83,7 @@ class Repository:
                 country=country,
                 career_url=career_url,
                 sponsor_verified=sponsor_verified,
+                name_quality=quality,
             )
             self.session.add(company)
             self.session.flush()
@@ -80,6 +91,7 @@ class Repository:
             company.name = name
             company.career_url = career_url or company.career_url
             company.sponsor_verified = sponsor_verified or company.sponsor_verified
+            company.name_quality = quality
         return company
 
     def upsert_job(
@@ -94,7 +106,7 @@ class Repository:
             normalized_job.company_name,
             normalized_job.country,
             career_url=career_url,
-            sponsor_verified=sponsor is not None,
+            sponsor_verified=sponsor is not None and company_name_quality(normalized_job.company_name) == "verified",
         )
         profile = analyze_job(normalized_job.title, normalized_job.description, normalized_job.job_family)
         canonical_apply_url = canonicalize_apply_url(normalized_job.apply_url)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -125,3 +126,40 @@ def test_recommendation_pagination_filters_and_structured_scores(session_factory
         assert [item["title"] for item in jobs.json()] == ["AI Engineer"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_recommendations_search_full_catalog_beyond_newest_500(db_session):
+    repo = Repository(db_session)
+    candidate = repo.create_candidate(
+        CandidateCreate(
+            name="Full Catalog Candidate",
+            target_roles=["AI Engineer"],
+            skills=["Python", "PyTorch"],
+            years_of_experience=6,
+            preferred_countries=["Germany"],
+        )
+    )
+    engine = EligibilityEngine()
+    for index in range(600):
+        title = "Backend Engineer"
+        if index == 599:
+            title = "AI Engineer"
+        item = NormalizedJob(
+            external_id=f"full-catalog-{index}",
+            provider=ATSProvider.GREENHOUSE,
+            source_slug="full-catalog",
+            company_name="Full Catalog Labs",
+            title=title,
+            description="Visa sponsorship is available. Required skills: Python, PyTorch.",
+            location="Berlin, Germany",
+            country="Germany",
+            apply_url=f"https://example.invalid/full-catalog/{index}",
+            posted_at=datetime.now(UTC) - timedelta(minutes=index),
+            job_family=classify_role(title),
+        )
+        repo.upsert_job(item, engine.assess(item))
+    db_session.commit()
+
+    ranked = RankingEngine().recommend(candidate, repo.list_recommendation_jobs(include_unknown=True), limit=None)
+    assert len(ranked) == 600
+    assert ranked[0].job.external_id == "full-catalog-599"

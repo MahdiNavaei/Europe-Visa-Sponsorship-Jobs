@@ -91,3 +91,15 @@ def test_snapshot_bootstrap_preserves_verified_state(db_session):
     assert restored.validation_state == "verified"
     assert restored.enabled is True
     assert restored.manual_override is False
+
+
+def test_production_snapshot_bootstraps_full_verified_registry_from_empty_db(db_session):
+    configs = load_sources("config/source-registry.snapshot.json", minimum_snapshot_sources=500)
+    registry = SourceRegistry(db_session)
+    for config in configs:
+        registry.import_verified_snapshot(config)
+    db_session.commit()
+
+    assert len(configs) >= 500
+    assert len(registry.list_sources(limit=100000)) == len(configs)
+    assert all(source.validation_state == "verified" for source in registry.list_sources(limit=100000))

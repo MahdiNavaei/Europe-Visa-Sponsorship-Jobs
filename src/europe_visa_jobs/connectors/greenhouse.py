@@ -23,6 +23,8 @@ class GreenhouseConnector(BaseConnector):
             rows.extend(item for item in batch if isinstance(item, dict))
             metadata = payload.get("meta") if isinstance(payload, dict) else None
             total = metadata.get("total") if isinstance(metadata, dict) else None
+            if isinstance(total, int):
+                self.reported_total = total
             if len(batch) < 100:
                 break
             if not isinstance(total, int):

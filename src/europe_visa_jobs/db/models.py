@@ -137,6 +137,7 @@ class Company(Base):
     country: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     career_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sponsor_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    name_quality: Mapped[str] = mapped_column(String(20), default="verified", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 

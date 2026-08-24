@@ -67,6 +67,7 @@ class JobFamily(StrEnum):
     MLOPS = "mlops"
     DEVOPS_CLOUD = "devops_cloud"
     QA_AUTOMATION = "qa_automation"
+    SECURITY_ENGINEERING = "security_engineering"
     OTHER = "other"
 
 
@@ -289,6 +290,7 @@ class CompanyRead(BaseModel):
     country: str | None
     career_url: str | None
     sponsor_verified: bool
+    name_quality: str = "verified"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -317,11 +319,19 @@ class CatalogSyncRead(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     last_successful_sync: datetime | None = None
+    next_scheduled_sync: datetime | None = None
     dataset_version: str | None = None
     generated_at: datetime | None = None
     sources_loaded: int | None = None
     jobs_loaded: int | None = None
     partial_success: bool = False
+    successful_sources: int | None = None
+    failed_sources: int | None = None
+    sources_updated: int | None = None
+    jobs_added: int | None = None
+    jobs_changed: int | None = None
+    jobs_removed: int | None = None
+    degraded_providers: list[str] = Field(default_factory=list)
     error: str | None = None
 
 

@@ -33,7 +33,7 @@ export function CompaniesPage() {
         cell: (info) => (
           <Link href={`/${locale}/companies/${info.row.original.id}`} className="focus-ring flex items-center gap-3">
             <div className="grid size-9 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><Building2 size={16} /></div>
-            <span className="font-bold text-[var(--ink)] hover:text-[var(--accent)]">{info.getValue()}</span>
+            <span className="flex flex-wrap items-center gap-2 font-bold text-[var(--ink)] hover:text-[var(--accent)]">{info.getValue()}{info.row.original.name_quality === "untrusted" && <Badge tone="warning">{t("identityReview")}</Badge>}</span>
           </Link>
         ),
       }),

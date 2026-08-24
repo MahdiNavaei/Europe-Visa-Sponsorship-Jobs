@@ -1,6 +1,7 @@
 from europe_visa_jobs.schemas import JobFamily
 from europe_visa_jobs.utils import (
     classify_role,
+    company_name_quality,
     infer_country,
     normalize_company_name,
     remote_scope,
@@ -27,6 +28,12 @@ def test_role_classifier_covers_target_families():
 def test_company_normalization_removes_legal_suffixes():
     assert normalize_company_name("Example Technologies GmbH") == "example technologies"
     assert normalize_company_name("Foo & Bar B.V.") == "foo and bar"
+
+
+def test_company_name_quality_does_not_trust_numeric_or_url_slugs():
+    assert company_name_quality("Acme GmbH") == "verified"
+    assert company_name_quality("12345") == "untrusted"
+    assert company_name_quality("https://boards.greenhouse.io/acme") == "untrusted"
 
 
 def test_remote_scope_distinguishes_europe_us_and_worldwide():

@@ -28,13 +28,14 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
     # A bare "data platform" phrase also appears in non-technical product and
     # programme titles. Require an explicit technical role after the phrase.
     (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform\b.*\b(?:engineer|architect|developer)")),
-    (JobFamily.DATA_SCIENCE, (r"data scientist", r"data science", r"decision scientist")),
+    (JobFamily.DATA_SCIENCE, (r"data scientist", r"data science", r"decision scientist", r"decision science")),
     (JobFamily.FRONTEND, (r"front[ -]?end", r"frontend", r"react developer", r"ui engineer")),
     (JobFamily.BACKEND, (r"back[ -]?end", r"backend", r"server[- ]side")),
     (JobFamily.FULLSTACK, (r"full[ -]?stack", r"fullstack")),
     (JobFamily.MOBILE, (r"mobile engineer", r"android", r"ios engineer", r"flutter")),
     (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"\bplatform engineer\b", r"\binfrastructure engineer\b")),
     (JobFamily.QA_AUTOMATION, (r"qa automation", r"test automation", r"quality engineer", r"software test")),
+    (JobFamily.SECURITY_ENGINEERING, (r"security engineer", r"application security", r"product security", r"cloud security")),
     (JobFamily.SOFTWARE_ENGINEERING, (r"software engineer", r"software developer", r"developer")),
 )
 

@@ -8,7 +8,7 @@
 - Provider-specific parsing isolated behind connectors
 - Country immigration logic isolated from text signals
 - Storage of evidence, not only final labels
-- Safe default: unknown jobs are hidden
+- Truthful default: eligible and unknown technical jobs are discoverable; unknown is never presented as eligible
 
 ## Packages
 
@@ -49,21 +49,17 @@ Supported Phase-1 feeds:
 ## Ingestion flow
 
 ```text
-SourceConfig
-   ↓ (or verified Source registry entry)
-ATS connector
+Central verified source registry
+   ↓ scheduled connector enumeration
+NormalizedJob[] (every fetched row retained)
+   ↓ technical/nontechnical classification
+EligibilityEngine (JD evidence + country rule + registry evidence)
    ↓
-NormalizedJob[]
+Company/job upsert and evidence persistence
    ↓
-Tech role filter
-   ↓
-EligibilityEngine
-   ↓
-Company/job upsert
-   ↓
-Evidence persistence
-   ↓
-Deactivate source jobs not seen in current successful run
+Versioned gzip catalog publication
+   ↓ atomic desktop import
+Only a proven COMPLETE source fetch may deactivate unseen jobs
 ```
 
 A failed source run does not deactivate existing jobs.
@@ -124,6 +120,7 @@ The unique job identity is:
 
 ## API default safety
 
-`GET /api/v1/jobs` defaults to `status=eligible`.
+`GET /api/v1/jobs` defaults to active eligible plus unknown records. Rejected
+records remain excluded from normal browse but are available explicitly for audit.
 
 `unknown` and `rejected` records remain available for audit/debugging when explicitly requested.

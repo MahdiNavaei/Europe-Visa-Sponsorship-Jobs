@@ -59,15 +59,17 @@ def publish_catalog(session: Session, output_dir: str | Path, *, dataset_version
         {key: getattr(item, key) for key in ("provider", "board_identifier", "company_name", "careers_url", "board_url", "api_url", "country_hint", "status", "enabled", "validation_state")}
         for item in session.scalars(select(Source).order_by(Source.id))
     ]
+    for source, source_item in zip(sources, session.scalars(select(Source).order_by(Source.id)), strict=True):
+        source["source_metadata"] = source_item.source_metadata or {}
     jobs: list[dict[str, Any]] = []
-    for item in session.scalars(select(Job).where(Job.active.is_(True)).order_by(Job.id)):
+    for job_item in session.scalars(select(Job).where(Job.active.is_(True)).order_by(Job.id)):
         jobs.append({
-            key: getattr(item, key)
+            key: getattr(job_item, key)
             for key in ("external_id", "provider", "source_slug", "company_name", "title", "description", "location", "country", "department", "employment_type", "workplace_type", "apply_url", "job_url", "posted_at", "job_family", "eligibility_status", "eligibility_score", "classification_status", "job_sponsorship_signal", "company_sponsor_status", "final_candidate_eligibility")
         })
         jobs[-1]["evidence"] = [
-            {key: getattr(evidence, key) for key in ("kind", "code", "message", "weight", "matched_text", "source_url")}
-            for evidence in item.evidence
+            {key: getattr(evidence_item, key) for key in ("kind", "code", "message", "weight", "matched_text", "source_url")}
+            for evidence_item in job_item.evidence
         ]
     for row in jobs:
         if row["posted_at"] is not None:
@@ -104,12 +106,19 @@ def import_catalog(session: Session, manifest_path: str | Path, *, max_bytes: in
             # rows are never touched by catalog import.
             from europe_visa_jobs.db.source_registry import SourceRegistry
             from europe_visa_jobs.schemas import SourceConfig
-            imported = SourceRegistry(session).import_config(SourceConfig(provider=source["provider"], company_name=source.get("company_name") or source["board_identifier"], slug=source["board_identifier"], default_country=source.get("country_hint"), careers_url=source.get("careers_url"), board_url=source.get("board_url"), api_url=source.get("api_url"), enabled=bool(source.get("enabled", True))))
+            imported = SourceRegistry(session).import_config(SourceConfig(provider=source["provider"], company_name=source.get("company_name") or source["board_identifier"], slug=source["board_identifier"], default_country=source.get("country_hint"), careers_url=source.get("careers_url"), board_url=source.get("board_url"), api_url=source.get("api_url"), metadata=source.get("source_metadata") or {}, enabled=bool(source.get("enabled", True))))
             imported.status = str(source.get("status") or imported.status)
             imported.validation_state = str(source.get("validation_state") or imported.validation_state)
             imported.enabled = bool(source.get("enabled", imported.enabled))
     repo = Repository(session)
     seen: dict[tuple[str, str], set[str]] = {}
+    source_completeness = {
+        (str(source.get("provider")), str(source.get("board_identifier"))): str(
+            (source.get("source_metadata") or {}).get("enumeration_completeness", "complete")
+        )
+        for source in payload.get("sources", [])
+        if source.get("provider") and source.get("board_identifier")
+    }
     for row in payload["jobs"]:
         family = JobFamily(row.get("job_family") or JobFamily.OTHER.value)
         job = NormalizedJob(external_id=str(row["external_id"]), provider=row["provider"], source_slug=row["source_slug"], company_name=row["company_name"], title=row["title"], description=row.get("description") or "", location=row.get("location") or "", country=row.get("country"), department=row.get("department"), employment_type=row.get("employment_type"), workplace_type=row.get("workplace_type"), apply_url=row["apply_url"], job_url=row.get("job_url"), posted_at=datetime.fromisoformat(row["posted_at"]) if row.get("posted_at") else None, job_family=family)
@@ -126,7 +135,8 @@ def import_catalog(session: Session, manifest_path: str | Path, *, max_bytes: in
         stored.final_candidate_eligibility = row.get("final_candidate_eligibility") or stored.final_candidate_eligibility
         seen.setdefault((row["provider"], row["source_slug"]), set()).add(str(row["external_id"]))
     for (provider, slug), ids in seen.items():
-        repo.mark_source_jobs_inactive_except(provider, slug, ids)
+        if source_completeness.get((provider, slug), "complete") == "complete":
+            repo.mark_source_jobs_inactive_except(provider, slug, ids)
     session.flush()
     return manifest
 

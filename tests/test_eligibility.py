@@ -84,7 +84,15 @@ def test_registry_plus_relocation_qualifies_netherlands_job():
     assert any(item.code == "verified_sponsor_registry" for item in result.evidence)
 
 
-def test_unsupported_country_is_hidden():
+def test_known_european_country_uses_conservative_country_rule():
     result = EligibilityEngine().assess(job("Visa sponsorship available.", country="Italy"))
+    assert result.status == EligibilityStatus.ELIGIBLE
+    assert result.score >= 50
+
+
+def test_unknown_non_european_country_is_not_claimed_as_european_coverage():
+    result = EligibilityEngine().assess(job("Visa sponsorship available.", country="Canada"))
     assert result.status == EligibilityStatus.UNKNOWN
     assert result.score == 0
+    assert any(item.code == "visa_sponsorship" for item in result.evidence)
+    assert any(item.code == "unsupported_country" for item in result.evidence)

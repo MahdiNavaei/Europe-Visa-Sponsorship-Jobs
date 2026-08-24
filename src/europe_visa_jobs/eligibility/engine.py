@@ -40,20 +40,25 @@ class EligibilityEngine:
                 assessed_at=datetime.now(UTC),
             )
 
+        explicit = self.detector.explicit_positives(text)
+        relocation = self.detector.relocation_signals(text)
+        international = self.detector.international_signals(text)
         country_rule = self.country_rules.get(job.country)
         if country_rule is None or not country_rule.supported:
+            preserved_evidence = [*explicit, *relocation, *international]
+            preserved_evidence.append(
+                Evidence(
+                    kind=EvidenceKind.COUNTRY_RULE,
+                    code="unsupported_country",
+                    message="Country is not covered by the phase-1 rule registry; job-level evidence is preserved for review.",
+                    weight=0,
+                )
+            )
             return EligibilityAssessment(
                 status=EligibilityStatus.UNKNOWN,
                 score=0,
                 country=job.country,
-                evidence=[
-                    Evidence(
-                        kind=EvidenceKind.COUNTRY_RULE,
-                        code="unsupported_country",
-                        message="Country is not covered by the phase-1 rule registry.",
-                        weight=0,
-                    )
-                ],
+                evidence=preserved_evidence,
                 assessed_at=datetime.now(UTC),
             )
 
@@ -66,9 +71,6 @@ class EligibilityEngine:
             )
         ]
         score = 5
-        explicit = self.detector.explicit_positives(text)
-        relocation = self.detector.relocation_signals(text)
-        international = self.detector.international_signals(text)
         evidence.extend(explicit)
         evidence.extend(relocation)
         evidence.extend(international)

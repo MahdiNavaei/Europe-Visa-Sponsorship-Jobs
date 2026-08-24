@@ -17,7 +17,11 @@ on:
     - cron: "17 3 * * *"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: market-data-publication
+  cancel-in-progress: false
 
 jobs:
   discover:
@@ -51,3 +55,15 @@ jobs:
         run: evj-ingest sources health --json > source-coverage.json
       - name: Confirm durable registry state
         run: test -s source-coverage.json
+      - name: Publish latest verified source registry
+        run: evj-ingest sources snapshot --output source-registry.latest.json --minimum-verified 500
+      - name: Persist source registry on market-data branch
+        shell: bash
+        run: |
+          git config user.name "career-radar-bot"
+          git config user.email "career-radar-bot@users.noreply.github.com"
+          git fetch origin market-data || true
+          git checkout -B market-data origin/market-data 2>/dev/null || git checkout -B market-data
+          git add source-registry.latest.json
+          git commit -m "data: publish verified source registry ${GITHUB_RUN_ID}" || echo "No source registry changes"
+          git push origin market-data

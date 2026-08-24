@@ -190,3 +190,28 @@ The packaged snapshot was regenerated from this registry and validates at 771
 verified boards. These are current local evidence values, not a release claim:
 frontend, Windows, cross-browser, hosted-CI, and publication gates remain
 separate requirements.
+
+## Current product-truth continuation evidence — 2026-08-24
+
+The current branch is `fix/product-truth-continuous-data`, based on
+`ac2683f5650f6e68840a41a3771b9444c2f71918` (`v1.1.3`). The following bounded live
+run used the current `config/source-registry.snapshot.json`, not historical report
+values:
+
+| Provider | Boards sampled | Successful | Failed | Raw/normalized jobs | Technical | Nontechnical | Completeness |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Greenhouse | 20 | 20 | 0 | 152 / 152 | 34 | 118 | complete; provider total exposed on all 20 |
+| Lever | 20 | 20 | 0 | 2,112 / 2,112 | 780 | 1,332 | complete public collection; provider total not exposed |
+| Personio | 10 | 10 | 0 | 94 / 94 | 10 | 84 | complete published XML surface; provider total not exposed |
+| Teamtailor | 10 | 10 | 0 | 0 / 0 | 0 | 0 | partial public HTML surface; no completeness claim |
+
+The configured 15-board live smoke also passed with 1,860 fetched jobs. This is a
+sample and does not establish that every board in the 771-source snapshot is healthy
+at this instant. Teamtailor public sources remain explicitly partial.
+
+The deterministic role corpus contains 36 labeled titles (24 technical, 12 hard
+negatives) and currently measures precision 1.0000 and recall 1.0000. The live
+recommendation benchmark used the 1,860-job sample and four personas; measured P@3,
+P@5, and P@10 were 1.0000 for AI/ML, Backend, Data, and DevOps/SRE under the
+role-similarity relevance definition. These are bounded audit measurements, not a
+claim that a human relevance panel has been completed.
