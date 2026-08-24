@@ -161,9 +161,9 @@ jobs:
               expired.unlink()
           PY
           git checkout --orphan "market-data-catalog-${GITHUB_RUN_ID}"
-          # The orphan checkout keeps the previous index; clear it without
-          # deleting the working-tree files before selecting the public payload.
-          git rm -r --cached . 2>/dev/null || true
+          # The orphan checkout can retain the previous index; clear it without
+          # deleting working-tree files before selecting the public payload.
+          git read-tree --empty
           # Keep runner-local build databases and generated diagnostics out of the
           # public data branch; only the catalog and durable state are published.
           git add data/catalog data/state
