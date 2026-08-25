@@ -81,7 +81,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force build/windows/app | Out-Null
           New-Item -ItemType Directory -Force build/windows/catalog | Out-Null
-          git fetch origin market-data 2>$null
+          git fetch --no-tags origin "refs/heads/market-data:refs/remotes/origin/market-data"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to fetch the durable market-data branch for the Windows package."
+          }
           if (git cat-file -e origin/market-data:data/catalog/latest.json 2>$null) {
             $manifest = git show origin/market-data:data/catalog/latest.json | ConvertFrom-Json
             $payload = [IO.Path]::GetFileName($manifest.payload)
