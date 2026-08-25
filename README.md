@@ -23,6 +23,10 @@ The v1.1 release package will create a local SQLite database, bootstrap a genera
 See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and Authenticode release requirements.
 Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
+### Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation. Official Windows release artifacts follow the repository's [`Code signing policy`](CODE_SIGNING_POLICY.md). Desktop data handling is documented in [`PRIVACY.md`](PRIVACY.md).
+
 ## Why this project exists
 
 International candidates routinely lose time on vacancies that look global but later contain restrictions such as:
