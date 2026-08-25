@@ -15,7 +15,12 @@ The signed release surface is:
 - `CareerRadar.exe`, the self-contained desktop launcher included in both installer and portable packages.
 - `CareerRadar-Setup-v<version>.exe`, the official Windows installer.
 
-Unsigned test artifacts may be produced for pull requests and non-release validation, but a tagged public Windows release must fail closed unless both executables receive a valid Authenticode signature.
+The workflow supports two truthful release modes. A `SIGNED` release uses Authenticode
+when both signing secrets are configured and verifies both executables. An `UNSIGNED`
+release is allowed when both signing secrets are absent; it preserves all package,
+smoke-test, manifest, and SHA-256 gates and clearly warns users that SmartScreen may
+show an unknown-publisher message. A partially configured secret pair or any signing
+failure fails the workflow; it never falls back to unsigned mode.
 
 ## Team roles
 

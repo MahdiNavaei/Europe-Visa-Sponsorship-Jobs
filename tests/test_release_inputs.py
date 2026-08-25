@@ -9,6 +9,12 @@ assert _SPEC and _SPEC.loader
 validate_release_inputs = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(validate_release_inputs)
 
+_SIGNING_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "windows_signing_mode.py"
+_SIGNING_SPEC = importlib.util.spec_from_file_location("windows_signing_mode", _SIGNING_SCRIPT)
+assert _SIGNING_SPEC and _SIGNING_SPEC.loader
+windows_signing_mode = importlib.util.module_from_spec(_SIGNING_SPEC)
+_SIGNING_SPEC.loader.exec_module(windows_signing_mode)
+
 
 def test_release_version_sources_match():
     assert validate_release_inputs.validate(require_snapshot=False) == "1.1.4"
@@ -29,6 +35,36 @@ def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
     monkeypatch.setattr(validate_release_inputs, "validate_registry", fake_validate_registry)
     assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.1.4"
     assert called["kwargs"]["require_input_hashes"] is True
+
+
+def test_windows_signing_mode_truth_table():
+    assert windows_signing_mode.resolve_signing_mode(None, None) == "UNSIGNED"
+    assert windows_signing_mode.resolve_signing_mode("base64-pfx", "pfx-password") == "SIGNED"
+
+    for certificate, password in (("base64-pfx", None), (None, "pfx-password")):
+        try:
+            windows_signing_mode.resolve_signing_mode(certificate, password)
+        except ValueError as exc:
+            assert str(exc) == (
+                "Windows signing is partially configured. Both "
+                "WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD must be present, "
+                "or both must be absent."
+            )
+        else:
+            raise AssertionError("partial Windows signing configuration must fail")
+
+
+def test_windows_workflow_surfaces_signing_mode_and_keeps_strict_signing():
+    root = Path(__file__).resolve().parents[1]
+    windows = (root / ".github" / "workflows" / "windows-package.yml").read_text(encoding="utf-8")
+    assert "scripts/windows_signing_mode.py" in windows
+    assert "release_mode: ${{ steps.signing.outputs.mode }}" in windows
+    assert "Windows release mode: UNSIGNED" in windows
+    assert "Windows release mode: SIGNED" in windows
+    assert "Authenticode was skipped because no signing certificate is configured." in windows
+    assert "if ($LASTEXITCODE -ne 0) { throw \"Launcher signing failed" in windows
+    assert "if ($LASTEXITCODE -ne 0) { throw \"Installer signing failed" in windows
+    assert "WINDOWS_RELEASE_MODE: ${{ needs.build-windows.outputs.release_mode }}" in windows
 
 
 def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():

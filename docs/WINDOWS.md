@@ -76,7 +76,13 @@ it has the same dependency-free runtime as the installer.
 ## Integrity
 
 `SHA256SUMS.txt` in the release contains SHA-256 hashes for the installer and portable ZIP.
+Verify both downloaded files against this checksum file before installation.
 
 ## Windows code signing
 
-Tagged release artifacts are Authenticode-signed and timestamped. The release workflow refuses to publish a tag unless the repository secrets `WINDOWS_CERTIFICATE_BASE64` (a base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` are configured. Pull-request artifacts may remain unsigned and are test-only.
+The workflow supports two explicit release modes:
+
+- **SIGNED**: when both `WINDOWS_CERTIFICATE_BASE64` (a base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` are configured, the launcher and installer are Authenticode-signed and the signatures are verified. A malformed certificate, wrong password, signing failure, or invalid signature fails the workflow.
+- **UNSIGNED**: when both signing secrets are absent, signing is skipped and the release remains eligible after all package, smoke, manifest, and checksum gates pass. Windows SmartScreen may show an unknown-publisher warning; use `SHA256SUMS.txt` to verify artifact integrity.
+
+If exactly one signing secret is configured, the workflow fails as a configuration error. The release notes always state the actual mode.

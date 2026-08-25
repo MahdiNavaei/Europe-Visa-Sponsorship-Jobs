@@ -190,7 +190,10 @@ Visa and sponsorship results are deterministic, evidence-based signals. They are
 
 The packaged seed catalog remains explicit and auditable, but it is no longer the production source universe. Coverage grows through the persistent registry and bounded discovery workflows; `config/sources.json` is retained for bootstrap, priority sources, and deterministic fixtures.
 
-Tagged Windows releases are fail-closed: publication requires the repository secrets
-`WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD`, and both executables
-must pass Authenticode verification. Unsigned pull-request artifacts are test-only and
-may still trigger SmartScreen.
+Windows release signing has two explicit modes. When both repository secrets
+`WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` are configured, both
+release executables must pass strict Authenticode signing and verification. When both
+secrets are absent, a tagged release may be published as `UNSIGNED` after the same
+package, smoke, manifest, and SHA-256 gates pass; release notes document the mode and
+SmartScreen may show an unknown-publisher warning. A partially configured pair fails
+closed. The current release workflow never masks a signing failure as unsigned.
