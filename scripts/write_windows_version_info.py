@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+from typing import cast
 
 
 def _numeric_version(value: str) -> tuple[int, int, int, int]:
@@ -18,7 +19,8 @@ def _numeric_version(value: str) -> tuple[int, int, int, int]:
     numbers = [int(part) for part in parts]
     if any(number < 0 or number > 65535 for number in numbers):
         raise ValueError("Windows version components must be between 0 and 65535")
-    return tuple((numbers + [0, 0, 0, 0])[:4])  # type: ignore[return-value]
+    padded = [*numbers, 0, 0, 0, 0][:4]
+    return cast(tuple[int, int, int, int], tuple(padded))
 
 
 def render(version: str) -> str:
