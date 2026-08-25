@@ -9,6 +9,10 @@ on:
       - "config/**"
       - "data/**"
       - "apps/web/**"
+      - "scripts/**"
+      - ".signpath/**"
+      - "CODE_SIGNING_POLICY.md"
+      - "PRIVACY.md"
       - "pyproject.toml"
       - "alembic.ini"
       - ".github/workflows/windows-package.yml"
@@ -18,12 +22,13 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -65,6 +70,17 @@ jobs:
           }
           python scripts/validate_release_inputs.py --require-snapshot --require-input-hashes
 
+      - name: Resolve release version
+        id: release-version
+        shell: pwsh
+        run: |
+          $version = (Get-Content "apps/web/package.json" | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "Release version is empty." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF -like "refs/tags/v*" -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match package version v$version"
+          }
+
       - name: Install and build web production bundle
         shell: pwsh
         working-directory: apps/web
@@ -105,8 +121,13 @@ jobs:
               throw "Windows live catalog publication failed."
             }
           }
+
           New-Item -ItemType Directory -Force build/windows/app/runtime | Out-Null
           New-Item -ItemType Directory -Force build/windows/app/web-standalone | Out-Null
+          python scripts/write_windows_version_info.py `
+            --version "${{ steps.release-version.outputs.version }}" `
+            --output build/windows/launcher-version.txt
+          if ($LASTEXITCODE -ne 0) { throw "Windows version-resource generation failed." }
 
           pyinstaller packaging/windows/launcher.py `
             --name CareerRadar `
@@ -115,6 +136,7 @@ jobs:
             --clean `
             --noconfirm `
             --paths src `
+            --version-file build/windows/launcher-version.txt `
             --collect-all alembic `
             --collect-submodules uvicorn `
             --collect-submodules europe_visa_jobs `
@@ -154,67 +176,93 @@ jobs:
 
           Copy-Item LICENSE build/windows/app/LICENSE.txt
 
-      - name: Prepare Windows code signing
+      - name: Validate launcher metadata
+        shell: pwsh
+        run: |
+          $expectedVersion = "${{ steps.release-version.outputs.version }}"
+          $info = (Get-Item "build/windows/app/CareerRadar.exe").VersionInfo
+          if ($info.ProductName -ne "Career Radar") {
+            throw "Launcher ProductName is '$($info.ProductName)' instead of 'Career Radar'."
+          }
+          if ($info.ProductVersion -ne $expectedVersion) {
+            throw "Launcher ProductVersion is '$($info.ProductVersion)' instead of '$expectedVersion'."
+          }
+
+      - name: Determine SignPath signing mode
         id: signing
         shell: pwsh
         env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
-            if ($env:GITHUB_REF -like "refs/tags/v*") {
-              throw "Tagged Windows releases require the WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD secrets."
-            }
-            Write-Warning "No signing certificate is configured; this non-release artifact will be unsigned."
+          $isRelease = $env:GITHUB_REF -like "refs/tags/v*"
+          if (-not $isRelease) {
             "enabled=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Non-tag build: Authenticode signing is intentionally skipped."
             exit 0
           }
-
-          $certificatePath = Join-Path $env:RUNNER_TEMP "career-radar-codesign.pfx"
-          [IO.File]::WriteAllBytes(
-            $certificatePath,
-            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
-          )
-          "CAREERRADAR_SIGN_CERT=$certificatePath" >> $env:GITHUB_ENV
+          $missing = @()
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)) { $missing += "SIGNPATH_API_TOKEN secret" }
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_ORGANIZATION_ID)) { $missing += "SIGNPATH_ORGANIZATION_ID variable" }
+          if ($missing.Count -gt 0) {
+            throw "Tagged Windows releases require SignPath configuration: $($missing -join ', ')"
+          }
           "enabled=true" >> $env:GITHUB_OUTPUT
 
-      - name: Sign launcher binary
+      - name: Upload unsigned launcher for SignPath origin verification
+        id: upload-unsigned-launcher
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: career-radar-unsigned-launcher-${{ github.sha }}
+          path: build/windows/app/CareerRadar.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign launcher with SignPath
+        if: steps.signing.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'career-radar' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_LAUNCHER_ARTIFACT_CONFIGURATION_SLUG || 'launcher' }}
+          github-artifact-id: ${{ steps.upload-unsigned-launcher.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/windows/signpath-launcher
+          parameters: |
+            version: ${{ toJSON(steps.release-version.outputs.version) }}
+
+      - name: Promote and verify signed launcher
         if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "WINDOWS_CERTIFICATE_PASSWORD is required when a signing certificate is configured."
+          $signed = Get-ChildItem "build/windows/signpath-launcher" -Filter CareerRadar.exe -Recurse | Select-Object -First 1
+          if (-not $signed) { throw "SignPath did not return CareerRadar.exe." }
+          Copy-Item $signed.FullName "build/windows/app/CareerRadar.exe" -Force
+          $signature = Get-AuthenticodeSignature "build/windows/app/CareerRadar.exe"
+          if ($signature.Status -ne "Valid") {
+            throw "Launcher signature is not valid: $($signature.Status)"
           }
-          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
-            Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-          if (-not $signTool) { throw "signtool.exe was not found." }
-          & $signTool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
-            /f $env:CAREERRADAR_SIGN_CERT /p $env:WINDOWS_CERTIFICATE_PASSWORD `
-            build/windows/app/CareerRadar.exe
-          if ($LASTEXITCODE -ne 0) { throw "Launcher signing failed with exit code $LASTEXITCODE" }
-          $signature = Get-AuthenticodeSignature build/windows/app/CareerRadar.exe
-          if ($signature.Status -ne "Valid") { throw "Launcher signature is not valid: $($signature.Status)" }
 
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --version=6.7.1 --no-progress -y
 
       - name: Build installer and portable archive
-        id: package
         shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $version = (Get-Content apps/web/package.json | ConvertFrom-Json).version
+          $version = "${{ steps.release-version.outputs.version }}"
           New-Item -ItemType Directory -Force build/windows/installer | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             "/DAppVersion=$version" `
             "/DSourceDir=$((Resolve-Path build/windows/app).Path)" `
             "/DOutputDir=$((Resolve-Path build/windows/installer).Path)" `
             packaging/windows/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE" }
 
           $portable = (Join-Path (Resolve-Path build/windows/installer).Path "CareerRadar-Portable-v$version.zip")
           $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
@@ -229,18 +277,84 @@ jobs:
           $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
           if (-not (Test-Path $installer)) { throw "Installer was not created." }
           if (-not (Test-Path $portable)) { throw "Portable archive was not created." }
-          if ("${{ steps.signing.outputs.enabled }}" -eq "true") {
-            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
-              Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1
-            if (-not $signTool) { throw "signtool.exe was not found." }
-            & $signTool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
-              /f $env:CAREERRADAR_SIGN_CERT /p $env:WINDOWS_CERTIFICATE_PASSWORD $installer
-            if ($LASTEXITCODE -ne 0) { throw "Installer signing failed with exit code $LASTEXITCODE" }
-            $signature = Get-AuthenticodeSignature $installer
-            if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($signature.Status)" }
+
+      - name: Validate installer metadata
+        shell: pwsh
+        run: |
+          $version = "${{ steps.release-version.outputs.version }}"
+          $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          $info = (Get-Item $installer).VersionInfo
+          if ($info.ProductName -ne "Career Radar") {
+            throw "Installer ProductName is '$($info.ProductName)' instead of 'Career Radar'."
           }
+          if ($info.ProductVersion -ne $version) {
+            throw "Installer ProductVersion is '$($info.ProductVersion)' instead of '$version'."
+          }
+
+      - name: Upload unsigned installer for SignPath origin verification
+        id: upload-unsigned-installer
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: career-radar-unsigned-installer-${{ github.sha }}
+          path: build/windows/installer/CareerRadar-Setup-v${{ steps.release-version.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign installer with SignPath
+        if: steps.signing.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'career-radar' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG || 'installer' }}
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/windows/signpath-installer
+          parameters: |
+            version: ${{ toJSON(steps.release-version.outputs.version) }}
+
+      - name: Promote and verify signed installer
+        if: steps.signing.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.release-version.outputs.version }}"
+          $name = "CareerRadar-Setup-v$version.exe"
+          $signed = Get-ChildItem "build/windows/signpath-installer" -Filter $name -Recurse | Select-Object -First 1
+          if (-not $signed) { throw "SignPath did not return $name." }
+          $destination = "build/windows/installer/$name"
+          Copy-Item $signed.FullName $destination -Force
+          $signature = Get-AuthenticodeSignature $destination
+          if ($signature.Status -ne "Valid") {
+            throw "Installer signature is not valid: $($signature.Status)"
+          }
+
+      - name: Enforce signed tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = "${{ steps.release-version.outputs.version }}"
+          foreach ($path in @(
+            "build/windows/app/CareerRadar.exe",
+            "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          )) {
+            $signature = Get-AuthenticodeSignature $path
+            if ($signature.Status -ne "Valid") {
+              throw "Tagged release contains an unsigned or invalid executable: $path ($($signature.Status))"
+            }
+          }
+
+      - name: Generate and verify release checksums
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.release-version.outputs.version }}"
+          $installer = "build/windows/installer/CareerRadar-Setup-v$version.exe"
+          $portable = "build/windows/installer/CareerRadar-Portable-v$version.zip"
           $hashes = @(
             "{0}  {1}" -f (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower(), (Split-Path $installer -Leaf)
             "{0}  {1}" -f (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower(), (Split-Path $portable -Leaf)
@@ -376,15 +490,16 @@ jobs:
           ### Windows — easiest way to run
           Download **CareerRadar-Setup-v${VERSION}.exe**, install it, and launch Career Radar from the Start menu. Python, Node.js, Docker, PostgreSQL, and project dependencies are bundled; users do not need to install them separately.
 
-          The desktop runtime stores its local SQLite database under `%LOCALAPPDATA%\\CareerRadar`, refreshes live ATS feeds on first launch, and refreshes again when data is older than 24 hours while the launcher is running.
+          The desktop runtime stores its local SQLite database under `%LOCALAPPDATA%\\CareerRadar`, synchronizes the centrally published market catalog in the background, and retains a bundled fallback for offline/recovery use.
 
-          Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy every calendar day.
+          Career Radar refreshes monitored sources and publishes updated market data on a scheduled basis. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy every calendar day.
 
           A portable ZIP and SHA-256 checksum file are included as well.
 
-          Advanced developers can use the repository's Docker/PostgreSQL/source installation documented in README.md.
+          ### Code signing policy
+          Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Both Windows executables are Authenticode-signed before release publication. See the [Career Radar code signing policy](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/blob/${TAG}/CODE_SIGNING_POLICY.md).
 
-          Both Windows executables are Authenticode-signed and timestamped. Verify the included SHA-256 checksums before installation.
+          Advanced developers can use the repository's Docker/PostgreSQL/source installation documented in README.md.
           EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then
