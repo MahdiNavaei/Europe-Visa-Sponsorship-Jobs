@@ -1,10 +1,11 @@
 # Contributing
 
-Thanks for helping improve Europe Visa Sponsorship Jobs.
+Thanks for helping improve Europe Visa Sponsorship Jobs / Career Radar.
 
-The project is designed to become community-driven once public. Accuracy matters more than job volume: a false claim that a vacancy supports immigration can waste a candidate's time.
+Accuracy matters more than job volume: a false claim that a vacancy supports
+immigration can waste a candidate's time.
 
-## Phase 1 contribution areas
+## Useful contribution areas
 
 Contributions are especially useful for:
 
@@ -15,17 +16,37 @@ Contributions are especially useful for:
 - hard restriction phrases
 - country and city normalization
 - technical role classification
-- tests and documentation
+- tests, accessibility, and documentation
 
 ## Non-negotiable rules
 
-1. **No paid LLM/API dependency.** Phase 1 must run without OpenAI, Anthropic, Gemini, or similar services.
-2. **Evidence over guesses.** Missing evidence should produce `unknown`, not `eligible`.
+1. **No paid LLM/API dependency at runtime.** The core product must remain usable without OpenAI, Anthropic, Gemini, or similar paid services.
+2. **Evidence over guesses.** Missing evidence should not be promoted into a positive sponsorship claim.
 3. **Hard negatives win.** Existing-work-authorization, citizenship, EU/EEA-only, or no-sponsorship restrictions must override positive wording.
 4. **A sponsor company does not imply every job is sponsored.** Vacancy-level evidence is still required.
 5. **Prefer first-party sources.** Use documented/public company ATS feeds and official immigration/sponsor sources where possible.
 6. **Do not bypass authentication, anti-bot controls, or website restrictions.**
 7. **Add tests with behavior changes.**
+
+## Contribution licensing
+
+The public repository is licensed under the PolyForm Noncommercial License 1.0.0.
+By submitting a contribution, you represent that you have the right to submit it and
+agree that the contribution may be distributed as part of this project under the
+repository's public license.
+
+To preserve the project's dual-licensing model, you also grant **Mahdi Navaei**, as
+project maintainer, a perpetual, worldwide, non-exclusive, royalty-free license to use,
+reproduce, modify, distribute, sublicense, and relicense your contribution, including
+under commercial terms. This additional grant applies only to the contribution you
+submit and does not transfer ownership of your copyright.
+
+If you do not have the authority to make these grants, do not submit the contribution.
+If your employer or another party owns rights in your work, obtain any required
+permission first.
+
+See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and
+[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md).
 
 ## Development setup
 
@@ -71,7 +92,8 @@ Country route metadata belongs in `eligibility/country_rules.py`.
 
 Textual sponsorship/restriction evidence belongs in `eligibility/signals.py`.
 
-Do not hard-code volatile salary thresholds into regex rules. Time-sensitive legal thresholds should be maintained as dated datasets with an official source.
+Do not hard-code volatile salary thresholds into regex rules. Time-sensitive legal
+thresholds should be maintained as dated datasets with an official source.
 
 ## Pull requests
 
@@ -82,5 +104,6 @@ Before opening a PR:
 - run the migration smoke test for schema changes
 - document new public data sources
 - explain false-positive/false-negative implications for eligibility changes
+- confirm that you can make the contribution-licensing grants described above
 
-The project deliberately prefers false negatives over false positives for the default user-facing job list.
+The project deliberately prioritizes evidence quality over inflated coverage claims.
