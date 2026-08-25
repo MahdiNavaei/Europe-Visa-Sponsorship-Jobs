@@ -75,8 +75,16 @@ it has the same dependency-free runtime as the installer.
 
 ## Integrity
 
-`SHA256SUMS.txt` in the release contains SHA-256 hashes for the installer and portable ZIP.
+`SHA256SUMS.txt` in the release contains SHA-256 hashes for the installer and portable ZIP. Checksums are generated only after release signing has completed.
 
 ## Windows code signing
 
-Tagged release artifacts are Authenticode-signed and timestamped. The release workflow refuses to publish a tag unless the repository secrets `WINDOWS_CERTIFICATE_BASE64` (a base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` are configured. Pull-request artifacts may remain unsigned and are test-only.
+Official tagged Windows releases use the project's SignPath Foundation integration. Free code signing is provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+The workflow uploads the unsigned launcher and installer as GitHub Actions artifacts, submits those artifact IDs to SignPath for GitHub build-origin verification, waits for the approved signing request, restores the signed files, and verifies their Authenticode status before a GitHub Release can be published.
+
+Tagged releases are fail-closed. A tag cannot produce a public Windows release unless `SIGNPATH_API_TOKEN` and `SIGNPATH_ORGANIZATION_ID` are configured and SignPath returns valid Authenticode signatures for both `CareerRadar.exe` and the setup executable. Pull-request and ordinary `main` artifacts may remain unsigned and are test-only.
+
+The repository defaults to the SignPath project/policy/configuration slugs `career-radar`, `release-signing`, `launcher`, and `installer`; repository variables can override those names if the SignPath project is provisioned differently.
+
+See [`CODE_SIGNING_POLICY.md`](../CODE_SIGNING_POLICY.md) and [`PRIVACY.md`](../PRIVACY.md) for the release policy and desktop privacy boundary.
