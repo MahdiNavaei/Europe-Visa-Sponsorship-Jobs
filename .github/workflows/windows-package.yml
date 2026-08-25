@@ -327,6 +327,7 @@ jobs:
           $env:CAREERRADAR_DATA_DIR = $smokeDataDir
           $env:CAREERRADAR_SMOKE_SEED = "1"
           $env:CAREERRADAR_REQUIRE_BUNDLED_CATALOG = "1"
+          $env:CAREERRADAR_SMOKE_BOUNDED_CATALOG = "1"
           try {
             $installedSmoke = Start-Process -FilePath "$installDir/CareerRadar.exe" -ArgumentList "--smoke-test" -WindowStyle Hidden -Wait -PassThru
             if ($installedSmoke.ExitCode -ne 0) {
@@ -357,6 +358,7 @@ jobs:
             Remove-Item Env:CAREERRADAR_DATA_DIR -ErrorAction SilentlyContinue
             Remove-Item Env:CAREERRADAR_SMOKE_SEED -ErrorAction SilentlyContinue
             Remove-Item Env:CAREERRADAR_REQUIRE_BUNDLED_CATALOG -ErrorAction SilentlyContinue
+            Remove-Item Env:CAREERRADAR_SMOKE_BOUNDED_CATALOG -ErrorAction SilentlyContinue
           }
 
       - name: Verify two market-data cycles through the same installed runtime

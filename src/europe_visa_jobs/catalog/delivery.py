@@ -163,14 +163,13 @@ def publish_catalog(session: Session, output_dir: str | Path, *, dataset_version
     return manifest
 
 
-def import_catalog(
-    session: Session,
+def _load_catalog_payload(
     manifest_path: str | Path,
     *,
     max_bytes: int = MAX_COMPRESSED_BYTES,
     max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES,
-) -> CatalogManifest:
-    """Verify a data-only snapshot and apply it in the caller's transaction."""
+) -> tuple[CatalogManifest, dict[str, Any]]:
+    """Verify and decode a data-only snapshot without changing the database."""
     manifest_file = Path(manifest_path)
     manifest_data = _read_json_file_bounded(manifest_file, MAX_MANIFEST_BYTES)
     try:
@@ -196,6 +195,37 @@ def import_catalog(
         or not isinstance(payload.get("jobs"), list)
     ):
         raise ValueError("catalog payload schema mismatch")
+    return manifest, payload
+
+
+def validate_catalog(
+    manifest_path: str | Path,
+    *,
+    max_bytes: int = MAX_COMPRESSED_BYTES,
+    max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES,
+) -> CatalogManifest:
+    """Validate a catalog snapshot without importing its rows into the database."""
+    manifest, _ = _load_catalog_payload(
+        manifest_path,
+        max_bytes=max_bytes,
+        max_uncompressed_bytes=max_uncompressed_bytes,
+    )
+    return manifest
+
+
+def import_catalog(
+    session: Session,
+    manifest_path: str | Path,
+    *,
+    max_bytes: int = MAX_COMPRESSED_BYTES,
+    max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES,
+) -> CatalogManifest:
+    """Verify a data-only snapshot and apply it in the caller's transaction."""
+    manifest, payload = _load_catalog_payload(
+        manifest_path,
+        max_bytes=max_bytes,
+        max_uncompressed_bytes=max_uncompressed_bytes,
+    )
     catalog_source_keys: set[tuple[str, str]] = set()
     for source in payload.get("sources", []):
         if source.get("provider") and source.get("board_identifier"):

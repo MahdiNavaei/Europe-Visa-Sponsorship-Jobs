@@ -65,7 +65,10 @@ installation and a freshly extracted portable directory with host Python and Nod
 removed from `PATH`. The test uses an isolated data directory and one clearly
 fictional fixture so it can verify migrations, the API, the production web server,
 the frontend response, and clean child-process shutdown without making a live ATS
-network call.
+network call. It also validates the bundled market-catalog manifest, compressed
+payload, SHA-256, gzip, and schema without bulk-importing the full published dataset
+into the smoke-test SQLite database. The separate two-cycle market-data smoke test
+exercises the full import/update path with a bounded fixture.
 
 ## Portable package
 

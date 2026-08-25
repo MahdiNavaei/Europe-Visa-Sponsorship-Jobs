@@ -84,6 +84,7 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert 'git fetch --no-tags origin "refs/heads/market-data:refs/remotes/origin/market-data"' in windows
     assert '$hasCatalog = ($LASTEXITCODE -eq 0)' in windows
     assert 'if ($hasCatalog)' in windows
+    assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
     assert "--only-uningested --largest-first --limit 100" in daily
     assert "git read-tree --empty" in daily
     assert "git add data/catalog data/state" in daily

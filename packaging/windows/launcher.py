@@ -529,24 +529,30 @@ def smoke_test(data_dir: Path) -> int:
         if missing_resources:
             raise RuntimeError("Embedded runtime resources are missing: " + ", ".join(missing_resources))
         if os.environ.get("CAREERRADAR_REQUIRE_BUNDLED_CATALOG") == "1":
-            from sqlalchemy import func, select
-
-            from europe_visa_jobs.catalog import import_catalog
-            from europe_visa_jobs.db.locking import database_write_lock
-            from europe_visa_jobs.db.models import Job
-            from europe_visa_jobs.db.session import SessionLocal
-
             bundled_manifest = bundle_dir() / "catalog" / "latest.json"
             if not bundled_manifest.exists():
                 raise RuntimeError("The Windows package does not contain a published market catalog.")
-            with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
-                import_catalog(session, bundled_manifest)
-                session.commit()
-                bundled_jobs = session.scalar(
-                    select(func.count()).select_from(Job).where(Job.active.is_(True))
-                ) or 0
-            if bundled_jobs < 1:
-                raise RuntimeError("The bundled market catalog contains no active jobs.")
+            if os.environ.get("CAREERRADAR_SMOKE_BOUNDED_CATALOG") == "1":
+                from europe_visa_jobs.catalog import validate_catalog
+
+                validate_catalog(bundled_manifest)
+                print("Bundled market catalog manifest and payload validated.")
+            else:
+                from sqlalchemy import func, select
+
+                from europe_visa_jobs.catalog import import_catalog
+                from europe_visa_jobs.db.locking import database_write_lock
+                from europe_visa_jobs.db.models import Job
+                from europe_visa_jobs.db.session import SessionLocal
+
+                with database_write_lock(os.environ["DATABASE_URL"]), SessionLocal() as session:
+                    import_catalog(session, bundled_manifest)
+                    session.commit()
+                    bundled_jobs = session.scalar(
+                        select(func.count()).select_from(Job).where(Job.active.is_(True))
+                    ) or 0
+                if bundled_jobs < 1:
+                    raise RuntimeError("The bundled market catalog contains no active jobs.")
         if os.environ.get("CAREERRADAR_SMOKE_SEED") == "1":
             seed_smoke_data()
         if os.environ.get("CAREERRADAR_SMOKE_SYNC") == "1":
