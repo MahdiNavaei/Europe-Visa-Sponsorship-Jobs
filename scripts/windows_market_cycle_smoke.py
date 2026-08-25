@@ -81,6 +81,9 @@ def _run(executable: Path, data_dir: Path, manifest_url: str, *, require_bundle:
             "CAREERRADAR_CATALOG_MANIFEST_URL": manifest_url,
             "CAREERRADAR_ALLOW_LOCAL_CATALOG_TEST": "1",
             "CAREERRADAR_SMOKE_SYNC": "1",
+            # Validate the packaged durable catalog without bulk-importing it;
+            # the downloaded N/N+1 fixtures below still exercise full import.
+            "CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1",
         }
     )
     if require_bundle:

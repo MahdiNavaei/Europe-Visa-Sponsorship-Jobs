@@ -85,6 +85,8 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert '$hasCatalog = ($LASTEXITCODE -eq 0)' in windows
     assert 'if ($hasCatalog)' in windows
     assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
+    cycle_smoke = (root / "scripts" / "windows_market_cycle_smoke.py").read_text(encoding="utf-8")
+    assert '"CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1"' in cycle_smoke
     assert "--only-uningested --largest-first --limit 100" in daily
     assert "git read-tree --empty" in daily
     assert "git add data/catalog data/state" in daily
