@@ -1,0 +1,6 @@
+# Release/signing-sensitive paths
+.github/workflows/windows-package.yml @MahdiNavaei
+CODE_SIGNING_POLICY.md @MahdiNavaei
+PRIVACY.md @MahdiNavaei
+.signpath/ @MahdiNavaei
+packaging/windows/ @MahdiNavaei
