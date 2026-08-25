@@ -85,10 +85,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Unable to fetch the durable market-data branch for the Windows package."
           }
-          if (git cat-file -e origin/market-data:data/catalog/latest.json 2>$null) {
-            $manifest = git show origin/market-data:data/catalog/latest.json | ConvertFrom-Json
+          $catalogManifest = "origin/market-data:data/catalog/latest.json"
+          git cat-file -e $catalogManifest 2>$null
+          $hasCatalog = ($LASTEXITCODE -eq 0)
+          if ($hasCatalog) {
+            $manifest = git show $catalogManifest | ConvertFrom-Json
             $payload = [IO.Path]::GetFileName($manifest.payload)
-            git show "origin/market-data:data/catalog/latest.json" | Set-Content -Encoding utf8 build/windows/catalog/latest.json
+            git show $catalogManifest | Set-Content -Encoding utf8 build/windows/catalog/latest.json
             git show "origin/market-data:data/catalog/$payload" > "build/windows/catalog/$payload"
             Write-Host "Bundled published market catalog $payload"
           } else {
