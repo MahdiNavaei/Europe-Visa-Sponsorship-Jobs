@@ -80,7 +80,8 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 - [ ] Installed runtime terminates backend and Node child processes cleanly
 - [ ] Portable ZIP extracts cleanly and passes the same no-host-runtime smoke test
 - [ ] User data remains under `%LOCALAPPDATA%\\CareerRadar` across upgrades
-- [ ] `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` are configured; both Windows executables have valid Authenticode signatures
+- [ ] Windows signing mode is recorded in workflow output and release notes; if `SIGNED`, both executables have valid Authenticode signatures, and if `UNSIGNED`, both signing secrets are absent
+- [ ] A partially configured signing-secret pair fails closed; signing failures are never masked as unsigned
 - [ ] The release tag targets the final validated main commit
 - [ ] GitHub Release attaches the exact verified Setup, Portable, and checksum files
 - [ ] Release assets are downloaded from GitHub and hashes are re-verified

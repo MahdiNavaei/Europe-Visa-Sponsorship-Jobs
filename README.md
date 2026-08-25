@@ -20,7 +20,7 @@ The Windows package bundles the Python backend runtime, the production Next.js s
 
 The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
 
-See [`docs/WINDOWS.md`](docs/WINDOWS.md) for local-data paths, refresh behavior, portable usage, and Authenticode release requirements.
+Windows artifacts may be signed or unsigned depending on the configured release mode; release notes and [`docs/WINDOWS.md`](docs/WINDOWS.md) explain how to verify the package and its SHA-256 checksums.
 Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
 ### Code signing policy
