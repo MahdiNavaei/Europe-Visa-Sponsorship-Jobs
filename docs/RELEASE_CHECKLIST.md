@@ -1,6 +1,6 @@
 # Release Checklist
 
-This checklist is intentionally evidence-driven. Items are checked only after the corresponding GitHub Actions release gate has passed on the final Phase 4 head.
+This checklist is intentionally evidence-driven. Items are checked only after the corresponding GitHub Actions release gate has passed on the final release head.
 
 ## Code quality
 
@@ -66,8 +66,8 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 - [ ] README includes product screenshots and production startup instructions
 - [ ] Phase 4 documentation records final validation results
 - [ ] Roadmap marks all four phases complete
-- [ ] PR #4 description matches actual validation results
-- [ ] Final Phase 4 PR is merged only after all required gates are green
+- [ ] Final release PR description matches actual validation results
+- [ ] Final release PR is merged only after all required gates are green
 
 ## Windows desktop distribution
 
@@ -80,7 +80,8 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 - [ ] Installed runtime terminates backend and Node child processes cleanly
 - [ ] Portable ZIP extracts cleanly and passes the same no-host-runtime smoke test
 - [ ] User data remains under `%LOCALAPPDATA%\\CareerRadar` across upgrades
-- [ ] `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` are configured; both Windows executables have valid Authenticode signatures
+- [ ] `SIGNPATH_API_TOKEN` secret and `SIGNPATH_ORGANIZATION_ID` repository variable are configured; SignPath returns valid Authenticode signatures for both Windows executables
+- [ ] SignPath project/policy/artifact configurations match the repository-controlled files under `.signpath/`
 - [ ] The release tag targets the final validated main commit
 - [ ] GitHub Release attaches the exact verified Setup, Portable, and checksum files
-- [ ] Release assets are downloaded from GitHub and hashes are re-verified
+- [ ] Release assets are downloaded from GitHub and hashes/signatures are re-verified
