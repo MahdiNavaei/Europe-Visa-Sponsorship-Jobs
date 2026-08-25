@@ -11,7 +11,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 import europe_visa_jobs.catalog.delivery as delivery
-from europe_visa_jobs.catalog.delivery import import_catalog, publish_catalog, sync_catalog
+from europe_visa_jobs.catalog.delivery import (
+    import_catalog,
+    publish_catalog,
+    sync_catalog,
+    validate_catalog,
+)
 from europe_visa_jobs.db.models import Base, CandidateJobState, Job
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.source_registry import SourceRegistry
@@ -51,6 +56,8 @@ def test_catalog_manifest_is_hash_verified_and_atomic(db_session, tmp_path: Path
     assert manifest.sha256
     assert json.loads((tmp_path / "latest.json").read_text())['payload'] == "catalog-n1.json.gz"
 
+    validated = validate_catalog(tmp_path / "latest.json")
+    assert validated.dataset_version == "n1"
     import_catalog(db_session, tmp_path / "latest.json")
 
     tampered = bytearray((tmp_path / manifest.payload).read_bytes())
