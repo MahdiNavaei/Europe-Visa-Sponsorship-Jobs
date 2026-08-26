@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from types import SimpleNamespace
 
 import httpx
@@ -8,6 +9,7 @@ import pytest
 
 import europe_visa_jobs.ingestion.cli as ingestion_cli
 import europe_visa_jobs.ingestion.pipeline as pipeline
+from europe_visa_jobs.connectors.base import ConnectorNotModified
 from europe_visa_jobs.db.models import IngestionRun
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.schemas import ATSProvider, NormalizedJob, SourceConfig
@@ -106,6 +108,40 @@ async def test_failed_refresh_does_not_deactivate_previous_jobs(db_session, monk
 
 
 @pytest.mark.asyncio
+async def test_not_modified_refresh_advances_ingestion_clock(db_session, monkeypatch):
+    source = SourceConfig(provider="greenhouse", company_name="Acme", slug="acme", default_country="Germany")
+    monkeypatch.setattr(pipeline, "build_connector", lambda client, source: FakeConnector())
+    async with httpx.AsyncClient() as client:
+        await pipeline.ingest_source(db_session, source, client=client)
+
+    registry_source = __import__(
+        "europe_visa_jobs.db.source_registry", fromlist=["SourceRegistry"]
+    ).SourceRegistry(db_session).get("greenhouse", "acme")
+    assert registry_source is not None
+    previous = registry_source.last_ingested_at
+
+    class NotModifiedConnector:
+        def __init__(self):
+            self.last_response_headers = {"etag": '"same"'}
+            self.last_fetch_duration_ms = 3
+
+        async def fetch_jobs(self):
+            raise ConnectorNotModified("not modified", status_code=304, category="not_modified")
+
+    monkeypatch.setattr(pipeline, "build_connector", lambda client, source: NotModifiedConnector())
+    async with httpx.AsyncClient() as client:
+        await pipeline.ingest_source(db_session, source, client=client)
+
+    assert registry_source.last_ingested_at is not None
+    assert previous is not None
+    refreshed_at = registry_source.last_ingested_at
+    assert refreshed_at.replace(tzinfo=refreshed_at.tzinfo or UTC) >= previous.replace(
+        tzinfo=previous.tzinfo or UTC
+    )
+    assert Repository(db_session).list_jobs()[0].active is True
+
+
+@pytest.mark.asyncio
 async def test_successful_refresh_closes_and_reactivates_jobs_without_duplicates(db_session, monkeypatch):
     source = SourceConfig(provider="greenhouse", company_name="Acme", slug="acme", default_country="Germany")
     snapshots = [
@@ -195,6 +231,8 @@ async def test_ingestion_batch_continues_after_one_source_fails(monkeypatch, tmp
     )
     assert processed == ["broken", "healthy"]
     assert summary == {
+        "selection_mode": "all",
+        "refresh_interval_hours": None,
         "sources_total": 2,
         "sources_successful": 1,
         "sources_failed": 1,

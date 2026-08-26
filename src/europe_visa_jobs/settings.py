@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     discovery_user_agent: str = "CareerRadar/1.0 (+https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs)"
     discovery_contact: str | None = None
     ingestion_concurrency: int = 4
+    # Central ingestion revisits healthy boards after this interval. The hosted
+    # scheduler reserves most bounded batch slots for already-ingested due
+    # boards while still advancing first-ingestion coverage.
+    ingestion_refresh_interval_hours: int = 18
+    ingestion_refresh_stale_share: float = 0.75
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

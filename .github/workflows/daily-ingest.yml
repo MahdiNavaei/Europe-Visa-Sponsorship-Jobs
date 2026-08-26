@@ -1,8 +1,11 @@
-name: Daily ingestion
+name: Recurring catalog ingestion
 
 on:
   schedule:
-    - cron: "17 4 * * *"
+    # An hourly bounded run gives the current 771-source verified registry
+    # enough reserved recurring-refresh capacity to revisit healthy boards in
+    # approximately 25 hours, even while new-board coverage is also pending.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +24,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PYTHONPATH: src:.
+      INGESTION_REFRESH_INTERVAL_HOURS: "18"
+      INGESTION_REFRESH_STALE_SHARE: "0.75"
 
     steps:
       - name: Checkout
@@ -70,10 +75,29 @@ jobs:
       - name: Validate authoritative source snapshot
         run: |
           python - <<'PY'
+          from math import ceil
           from europe_visa_jobs.ingestion.sources import load_sources
           sources = load_sources("build/source-registry.latest.json", minimum_snapshot_sources=500)
           assert all("example" not in source.slug.lower() for source in sources)
-          print(f"validated {len(sources)} live ATS sources")
+          batch_size = 150
+          refresh_interval_hours = 18
+          max_revisit_hours = 25
+          recurring_slots = ceil(batch_size * 0.75)
+          recurring_capacity = refresh_interval_hours * recurring_slots
+          assert len(sources) <= recurring_capacity, (
+              f"verified registry has {len(sources)} boards but the configured "
+              f"18-hour fairness window reserves only {recurring_capacity} refresh slots"
+          )
+          worst_case_hours = refresh_interval_hours + ceil(len(sources) / recurring_slots)
+          assert worst_case_hours <= max_revisit_hours, (
+              f"verified registry growth makes the documented {max_revisit_hours}-hour "
+              f"revisit bound impossible: {len(sources)} boards require approximately "
+              f"{worst_case_hours} hours with {recurring_slots} reserved slots/run"
+          )
+          print(
+              f"validated {len(sources)} live ATS sources; recurring capacity="
+              f"{recurring_capacity} boards/18h, bounded revisit≈{worst_case_hours}h"
+          )
           PY
 
       - name: Migrate database
@@ -87,8 +111,8 @@ jobs:
           evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
-      - name: Ingest a durable registry batch
-        run: evj-ingest jobs --registry --only-uningested --largest-first --limit 100 --allow-partial --summary-file build/ingestion-summary.json
+      - name: Ingest a fair durable refresh batch
+        run: evj-ingest jobs --registry --due-for-refresh --limit 150 --allow-partial --summary-file build/ingestion-summary.json
 
       - name: Report persisted ingestion result
         run: |

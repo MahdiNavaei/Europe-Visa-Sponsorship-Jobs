@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from math import ceil
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -171,14 +172,35 @@ class SourceRegistry:
             parsed = datetime.fromisoformat(value)
             return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
-        source = self.import_config(config)
         last_success = parse_timestamp(health.get("last_success_at"))
         if last_success is None:
             raise ValueError("snapshot source is missing last_success_at")
+        incoming_checked_at = parse_timestamp(health.get("last_checked_at")) or last_success
+
+        # The discovery snapshot and central ingestion checkpoint are produced
+        # by separate scheduled workflows. Re-importing an older discovery
+        # snapshot must not erase a newer ingestion failure/backoff decision or
+        # re-enable a source before its retry deadline.
+        from europe_visa_jobs.discovery.patterns import identify_config
+
+        identified = identify_config(config)
+        existing = self.get(config.provider, identified.board_identifier)
+        previous_enabled = existing.enabled if existing is not None else None
+        local_checked_at = existing.last_checked_at if existing is not None else None
+        if local_checked_at is not None and local_checked_at.tzinfo is None:
+            local_checked_at = local_checked_at.replace(tzinfo=UTC)
+
+        source = self.import_config(config)
+        if local_checked_at is not None and local_checked_at > incoming_checked_at:
+            if previous_enabled is not None:
+                source.enabled = previous_enabled
+            self.session.flush()
+            return source
+
         source.validation_state = SourceValidationState.VERIFIED.value
         source.status = str(health.get("health_state") or SourceStatus.HEALTHY.value)
         source.verified_at = source.verified_at or last_success
-        source.last_checked_at = parse_timestamp(health.get("last_checked_at")) or last_success
+        source.last_checked_at = incoming_checked_at
         source.last_health_check_at = source.last_checked_at
         source.last_success_at = last_success
         source.last_failure_at = parse_timestamp(health.get("last_failure_at"))
@@ -370,6 +392,78 @@ class SourceRegistry:
         if limit:
             stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt))
+
+    def due_for_ingestion(
+        self,
+        *,
+        refresh_interval: timedelta,
+        now: datetime | None = None,
+        providers: set[str] | None = None,
+        limit: int | None = None,
+        stale_share: float = 0.75,
+    ) -> list[Source]:
+        """Return a deterministic, starvation-resistant scheduled refresh batch.
+
+        Never-ingested verified boards and previously-ingested boards whose
+        refresh interval elapsed share the same bounded batch. A reserved stale
+        share prevents a large discovery backlog from starving recurring
+        refreshes; the remainder guarantees that new boards continue to enter
+        coverage. Unused capacity from either partition is filled by the other.
+        """
+        if refresh_interval <= timedelta(0):
+            raise ValueError("refresh_interval must be positive")
+        if not 0 < stale_share < 1:
+            raise ValueError("stale_share must be between zero and one")
+        if limit is not None and limit < 1:
+            return []
+
+        current = now or datetime.now(UTC)
+        cutoff = current - refresh_interval
+        retrying_statuses = {
+            SourceStatus.DEGRADED.value,
+            SourceStatus.FAILING.value,
+        }
+        stmt = select(Source).where(
+            Source.verified_at.is_not(None),
+            or_(Source.enabled.is_(True), Source.status.in_(retrying_statuses)),
+            or_(Source.last_ingested_at.is_(None), Source.last_ingested_at <= cutoff),
+            or_(
+                Source.status.not_in(retrying_statuses),
+                Source.retry_after.is_(None),
+                Source.retry_after <= current,
+            ),
+        )
+        if providers:
+            stmt = stmt.where(Source.provider.in_(providers))
+        candidates = list(self.session.scalars(stmt))
+
+        never = sorted(
+            (source for source in candidates if source.last_ingested_at is None),
+            key=lambda source: (source.discovered_at, source.provider, source.board_identifier),
+        )
+        stale = sorted(
+            (source for source in candidates if source.last_ingested_at is not None),
+            key=lambda source: (source.last_ingested_at, source.provider, source.board_identifier),
+        )
+        if limit is None or len(candidates) <= limit:
+            return stale + never
+        if not stale:
+            return never[:limit]
+        if not never:
+            return stale[:limit]
+
+        stale_slots = min(len(stale), max(1, ceil(limit * stale_share)))
+        never_slots = min(len(never), max(1, limit - stale_slots))
+        selected = stale[:stale_slots] + never[:never_slots]
+        remaining = limit - len(selected)
+        if remaining:
+            # One partition can be smaller than its reservation. Fill the
+            # unused slots deterministically without wasting scheduler capacity.
+            selected.extend(stale[stale_slots : stale_slots + remaining])
+            remaining = limit - len(selected)
+        if remaining:
+            selected.extend(never[never_slots : never_slots + remaining])
+        return selected
 
     def coverage(self) -> dict[str, int | datetime | None]:
         sources = self.list_sources()

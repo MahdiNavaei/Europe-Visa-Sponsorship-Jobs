@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -108,6 +109,27 @@ def test_refresh_start_preserves_last_successful_sync(tmp_path: Path) -> None:
     assert during["last_successful_sync"] == before["last_successful_sync"]
     assert during["dataset_version"] == "2026-08-24"
     assert during["error"] is None
+
+
+def test_existing_install_refresh_due_uses_24_hour_interval(tmp_path: Path, monkeypatch) -> None:
+    launcher = load_launcher_module()
+    baseline = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+    launcher.last_refresh_path(tmp_path).write_text(
+        launcher.json.dumps({"completed_at": baseline.isoformat()}),
+        encoding="utf-8",
+    )
+
+    class FrozenDateTime(datetime):
+        current = baseline + timedelta(hours=23, minutes=59)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(launcher, "datetime", FrozenDateTime)
+    assert launcher.refresh_due(tmp_path) is False
+    FrozenDateTime.current = baseline + timedelta(hours=24)
+    assert launcher.refresh_due(tmp_path) is True
 
 
 def test_bundled_recovery_is_reported_as_stale_not_success(tmp_path: Path) -> None:

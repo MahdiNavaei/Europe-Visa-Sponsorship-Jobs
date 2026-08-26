@@ -403,7 +403,7 @@ jobs:
 
           The desktop runtime stores its local SQLite database under `%LOCALAPPDATA%\\CareerRadar`, refreshes live ATS feeds on first launch, and refreshes again when data is older than 24 hours while the launcher is running.
 
-          Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy every calendar day.
+          Career Radar's central scheduler revisits the current verified source registry within an approximately 25-hour bounded window and surfaces newly discovered eligible opportunities. Installed clients check the published catalog every 24 hours while running. This is evidence-based job intelligence, not legal advice and not a guarantee that an employer will sponsor a particular applicant or publish a new eligible vacancy in every refresh window.
 
           A portable ZIP and SHA-256 checksum file are included as well.
 

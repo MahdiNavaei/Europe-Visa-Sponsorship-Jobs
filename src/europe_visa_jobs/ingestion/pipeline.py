@@ -59,6 +59,18 @@ async def ingest_source(
                     metadata={"duration_ms": fetch_duration_ms, "not_modified": True},
                 ),
             )
+            # A conditional 304 is a successful refresh. Advance the ingestion
+            # clock so this source does not remain due and consume every later
+            # bounded scheduler batch.
+            registry.record_ingestion_counts(
+                registry_source,
+                raw_jobs=registry_source.raw_job_count,
+                technical_jobs=registry_source.technical_job_count,
+                active_jobs=registry_source.active_job_count,
+                eligible_jobs=registry_source.eligible_job_count,
+                unknown_jobs=registry_source.unknown_job_count,
+                rejected_jobs=registry_source.rejected_job_count,
+            )
             run.fetched_count = registry_source.raw_job_count
             run.stored_count = registry_source.technical_job_count
             run.status = "success"

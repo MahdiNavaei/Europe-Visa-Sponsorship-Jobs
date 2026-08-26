@@ -304,6 +304,11 @@ def test_jobs_cli_can_target_provider_for_bounded_ingestion():
     )
     assert args.provider == ["personio"] and args.only_uningested
 
+    due = ingestion_cli._parser().parse_args(
+        ["jobs", "--registry", "--due-for-refresh", "--limit", "150"]
+    )
+    assert due.due_for_refresh and due.limit == 150
+
 
 @pytest.mark.asyncio
 async def test_bounded_discovery_does_not_mark_unselected_verified_sources_pending(monkeypatch, db_session):
