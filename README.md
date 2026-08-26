@@ -39,7 +39,7 @@ are surfaced rather than hidden.
 
 ## Install on Windows
 
-The current downloadable release is [v1.1.4](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.1.4).
+The current downloadable release is [v1.2.0](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.2.0).
 Download the setup executable or portable ZIP from
 [Releases](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases),
 verify the published SHA-256 checksum, then install and launch—Python, Node.js, Docker,
@@ -49,9 +49,6 @@ The release uses a local SQLite database and synchronizes a hash-verified, versi
 market catalog. Releases may be signed or unsigned depending on the configured release
 mode; see [Windows packaging](docs/WINDOWS.md) and the
 [code-signing policy](CODE_SIGNING_POLICY.md).
-
-`main` also contains post-v1.1.4 launch hardening. That work is not represented as a
-retroactive claim about the already-published v1.1.4 binaries.
 
 ## Live data and coverage
 
