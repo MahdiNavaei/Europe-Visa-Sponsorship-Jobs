@@ -8,7 +8,7 @@ have evidence worth a candidate's time?**
 It uses deterministic rules and stored evidence—no LLM or paid AI API is required at
 runtime.
 
-![Career Radar dashboard](docs/assets/dashboard-en.png)
+![Career Radar dashboard](docs/images/career-radar-dashboard.png)
 
 ## What makes it different
 
