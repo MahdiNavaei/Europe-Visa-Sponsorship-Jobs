@@ -12,8 +12,8 @@ def remote_scope(location: str | None) -> str:
     # Europe/EEA restriction.
     if "emea" in value:
         return "emea"
-    if "europe" in value or "european union" in value or "eu" in value.split():
-        return "europe"
     if any(token in value for token in ("worldwide", "global", "anywhere")):
         return "worldwide"
+    if "europe" in value or "european union" in value or "eu" in value.split():
+        return "europe"
     return "unspecified"

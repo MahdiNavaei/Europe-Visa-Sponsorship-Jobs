@@ -9,11 +9,13 @@ import { Card } from "@/components/ui/card";
 import { ScoreBadge, ScoreBar } from "@/components/ui/progress";
 import type { Job, Recommendation } from "@/lib/types";
 import { formatCountry, formatDate, formatJobFamily, formatScore, formatStatus } from "@/lib/utils/format";
+import { localizeRecommendationReason } from "@/lib/i18n/recommendation-reasons";
 
 export function JobCard({ job, recommendation }: { job: Job; recommendation?: Recommendation }) {
   const locale = useLocale();
   const common = useTranslations("common");
   const card = useTranslations("card");
+  const reasonT = useTranslations("recommendationReasons");
   const score = recommendation?.scores.overall ?? job.eligibility_score;
   const visa = recommendation?.scores.visa ?? job.eligibility_score;
 
@@ -74,10 +76,10 @@ export function JobCard({ job, recommendation }: { job: Job; recommendation?: Re
         {recommendation && (recommendation.reasons.length > 0 || recommendation.warnings.length > 0) && (
           <div className="mt-4 space-y-2">
             {recommendation.reasons.slice(0, 2).map((reason) => (
-              <p key={reason} className="flex gap-2 text-xs leading-5 text-[var(--muted)]"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[var(--mint)]" />{reason}</p>
+              <p key={reason} className="flex gap-2 text-xs leading-5 text-[var(--muted)]"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[var(--mint)]" />{localizeRecommendationReason(reason, locale, reasonT)}</p>
             ))}
             {recommendation.warnings.slice(0, 1).map((warning) => (
-              <p key={warning} className="flex gap-2 text-xs leading-5 text-[var(--muted)]"><TriangleAlert size={14} className="mt-0.5 shrink-0 text-[var(--amber)]" />{warning}</p>
+              <p key={warning} className="flex gap-2 text-xs leading-5 text-[var(--muted)]"><TriangleAlert size={14} className="mt-0.5 shrink-0 text-[var(--amber)]" />{localizeRecommendationReason(warning, locale, reasonT)}</p>
             ))}
           </div>
         )}

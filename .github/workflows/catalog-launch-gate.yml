@@ -1,0 +1,57 @@
+name: Real catalog launch gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/catalog-launch-gate.yml"
+      - "src/europe_visa_jobs/catalog/**"
+      - "src/europe_visa_jobs/utils/market.py"
+      - "scripts/catalog_launch_gate.py"
+      - "requirements-runtime.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  full-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: sqlite:///${{ github.workspace }}/build/catalog-launch-gate.sqlite
+      PYTHONPATH: src:.
+
+    steps:
+      - name: Checkout exact requested revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime
+        run: |
+          python -m pip install --require-hashes -r requirements-runtime.lock
+          python -m pip install --no-build-isolation --no-deps -e .
+
+      - name: Migrate clean SQLite database
+        run: |
+          mkdir -p build
+          alembic upgrade head
+
+      - name: Download, validate, and import the real catalog
+        run: >-
+          python scripts/catalog_launch_gate.py
+          --manifest-url
+          https://raw.githubusercontent.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/market-data/data/catalog/latest.json
+          --report build/catalog-launch-gate.json
+
+      - name: Publish launch-gate metrics
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: real-catalog-launch-gate-${{ github.sha }}
+          path: build/catalog-launch-gate.json
+          if-no-files-found: error
+          retention-days: 14

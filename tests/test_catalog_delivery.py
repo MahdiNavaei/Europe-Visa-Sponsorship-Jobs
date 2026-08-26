@@ -6,8 +6,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 import europe_visa_jobs.catalog.delivery as delivery
@@ -251,26 +252,17 @@ def test_catalog_sync_downloads_manifest_and_payload(monkeypatch, db_session, tm
     manifest_bytes = (tmp_path / "latest.json").read_bytes()
     payload_bytes = (tmp_path / manifest.payload).read_bytes()
 
-    class Response:
-        def __init__(self, body: bytes):
-            self.body = body
-            self.headers = {"Content-Length": str(len(body))}
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = manifest_bytes if request.url.path.endswith("latest.json") else payload_bytes
+        return httpx.Response(200, content=body, headers={"Content-Length": str(len(body))})
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self, _size=-1):
-            return self.body
-
-    def open_url(request, timeout=15):
-        del timeout
-        return Response(manifest_bytes if str(request.full_url).endswith("latest.json") else payload_bytes)
-
-    monkeypatch.setattr(delivery.urllib.request, "urlopen", open_url)
-    imported = sync_catalog(db_session, "https://raw.githubusercontent.com/org/repo/market-data/latest.json", tmp_path / "cache")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        imported = sync_catalog(
+            db_session,
+            "https://raw.githubusercontent.com/org/repo/market-data/latest.json",
+            tmp_path / "cache",
+            client=client,
+        )
     assert imported.dataset_version == "n2"
 
 
@@ -281,7 +273,7 @@ def test_catalog_sync_rejects_non_data_endpoint(db_session, tmp_path: Path) -> N
 
 def test_catalog_sync_allows_only_explicit_loopback_test_endpoint(monkeypatch, db_session, tmp_path: Path) -> None:
     monkeypatch.setenv("CAREERRADAR_ALLOW_LOCAL_CATALOG_TEST", "1")
-    with pytest.raises((OSError, ValueError)):
+    with pytest.raises(delivery.CatalogDownloadError):
         sync_catalog(db_session, "http://127.0.0.1:9/latest.json", tmp_path)
 
 
@@ -320,6 +312,175 @@ def test_catalog_atomic_write_cleans_temporary_file(monkeypatch, db_session, tmp
 
 
 def test_catalog_sync_rejects_unsafe_payload_path(monkeypatch, db_session, tmp_path: Path) -> None:
-    monkeypatch.setattr(delivery, "_read_bounded", lambda *_args: json.dumps({"payload": "../escape.gz"}).encode())
-    with pytest.raises(ValueError, match="unsafe"):
-        sync_catalog(db_session, "https://raw.githubusercontent.com/org/repo/latest.json", tmp_path)
+    body = json.dumps({"payload": "../escape.gz"}).encode()
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, content=body))
+    with httpx.Client(transport=transport) as client, pytest.raises(ValueError, match="unsafe"):
+        sync_catalog(
+            db_session,
+            "https://raw.githubusercontent.com/org/repo/latest.json",
+            tmp_path,
+            client=client,
+        )
+
+
+def test_catalog_stream_retries_transient_failure_and_cleans_partial_file(tmp_path: Path) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, content=b"complete", request=request)
+
+    target = tmp_path / "download"
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        digest, size = delivery._download_streamed(
+            client, "https://example.com/data", target, maximum=32, retries=2, phase="test"
+        )
+    assert calls == 2
+    assert size == 8
+    assert digest == hashlib.sha256(b"complete").hexdigest()
+    assert target.read_bytes() == b"complete"
+
+
+def test_catalog_stream_retries_timeout_and_cleans_partial_file(tmp_path: Path) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ReadTimeout("stalled response", request=request)
+        return httpx.Response(200, content=b"recovered", request=request)
+
+    target = tmp_path / "download"
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        digest, size = delivery._download_streamed(
+            client, "https://example.com/data", target, maximum=32, retries=2, phase="test"
+        )
+    assert calls == 2
+    assert size == 9
+    assert digest == hashlib.sha256(b"recovered").hexdigest()
+    assert target.read_bytes() == b"recovered"
+
+
+def test_catalog_stream_rejects_bad_content_length_without_retry(tmp_path: Path) -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, content=b"short", headers={"Content-Length": "6"}, request=request
+        )
+    )
+    target = tmp_path / "download"
+    with httpx.Client(transport=transport) as client, pytest.raises(
+        delivery.CatalogDownloadError, match="truncated"
+    ):
+        delivery._download_streamed(
+            client, "https://example.com/data", target, maximum=32, retries=3, phase="test"
+        )
+    assert not target.exists()
+
+
+def test_failed_catalog_sync_preserves_existing_cache(db_session, tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "latest.json").write_bytes(b"previous-valid-manifest")
+    manifest = {
+        "schema_version": 1,
+        "dataset_version": "bad",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "source_registry_version": "bad",
+        "job_dataset_version": "bad",
+        "payload": "catalog-bad.json.gz",
+        "sha256": "0" * 64,
+        "compressed_bytes": 3,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.dumps(manifest).encode() if request.url.path.endswith("latest.json") else b"bad"
+        return httpx.Response(200, content=body, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, pytest.raises(
+        ValueError, match="hash mismatch"
+    ):
+        sync_catalog(
+            db_session,
+            "https://raw.githubusercontent.com/org/repo/latest.json",
+            cache,
+            client=client,
+        )
+    assert (cache / "latest.json").read_bytes() == b"previous-valid-manifest"
+    assert not list(cache.glob(".catalog-stage-*"))
+
+
+def test_malformed_gzip_is_rejected_without_replacing_cache(db_session, tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "latest.json").write_bytes(b"previous-valid-manifest")
+    payload = b"not-a-gzip-stream"
+    manifest = {
+        "schema_version": 1,
+        "dataset_version": "malformed",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "source_registry_version": "malformed",
+        "job_dataset_version": "malformed",
+        "payload": "catalog-malformed.json.gz",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "compressed_bytes": len(payload),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.dumps(manifest).encode() if request.url.path.endswith("latest.json") else payload
+        return httpx.Response(200, content=body, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, pytest.raises(
+        (gzip.BadGzipFile, ValueError, EOFError)
+    ):
+        sync_catalog(
+            db_session,
+            "https://raw.githubusercontent.com/org/repo/latest.json",
+            cache,
+            client=client,
+        )
+    assert (cache / "latest.json").read_bytes() == b"previous-valid-manifest"
+    assert not list(cache.glob(".catalog-stage-*"))
+
+
+def test_catalog_import_uses_bounded_selects_and_does_not_commit(
+    session_factory, tmp_path: Path
+) -> None:
+    with session_factory() as source_session:
+        SourceRegistry(source_session).import_config(
+            SourceConfig(provider="greenhouse", company_name="Acme", slug="acme")
+        )
+        repo = Repository(source_session)
+        for index in range(50):
+            item = _job(f"bounded-{index}")
+            repo.upsert_job(item, EligibilityEngine().assess(item))
+        source_session.commit()
+        publish_catalog(source_session, tmp_path, dataset_version="bounded")
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'bounded.sqlite'}")
+    Base.metadata.create_all(engine)
+    statements: list[str] = []
+    commits = 0
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def capture(_conn, _cursor, statement, _parameters, _context, _many) -> None:
+        statements.append(statement)
+
+    with Session(engine) as client_session:
+        @event.listens_for(client_session, "after_commit")
+        def committed(_session) -> None:
+            nonlocal commits
+            commits += 1
+
+        profile: dict[str, float | int | str] = {}
+        import_catalog(client_session, tmp_path / "latest.json", profile=profile)
+        assert client_session.query(Job).count() == 50
+        assert profile["imported_jobs"] == 50
+        assert commits == 0
+
+    selects = [statement for statement in statements if statement.lstrip().upper().startswith("SELECT")]
+    assert len(selects) <= 10
+    engine.dispose()

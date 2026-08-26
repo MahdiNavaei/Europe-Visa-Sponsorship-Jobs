@@ -8,6 +8,7 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },

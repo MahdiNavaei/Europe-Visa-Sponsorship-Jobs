@@ -9,6 +9,25 @@ Career Radar has two data boundaries:
   the user's local database. Catalog synchronization is additive/update-oriented and
   does not replace those tables.
 
+The default published job dataset is deliberately narrower than the raw source
+registry. Publication and desktop import both enforce the same canonical market
+policy from `europe_visa_jobs.utils.market`: only technical vacancies in a supported
+European country, or remote vacancies explicitly limited to Europe, are admitted.
+This is defense in depth; the web UI is not the market-policy boundary.
+
+Market-scope behavior is fail closed:
+
+- a country-specific supported European location is included;
+- a multi-location vacancy is included when at least one supported European location
+  is explicit, even if non-European alternatives are also listed;
+- `Remote — Europe` is included;
+- global/worldwide remote, generic remote, EMEA, unknown location, US-only,
+  Canada-only, and other non-European vacancies are excluded;
+- an unknown location is never inferred to be European.
+
+Raw source-health metadata remains available so failures and coverage are observable,
+but out-of-market and nontechnical vacancies are not serialized as default market jobs.
+
 Each publication includes `latest.json` with a schema version, dataset version,
 generation time, source-registry version, job-dataset version, compressed payload name,
 byte count, and SHA-256. The Windows client checks this manifest in the background. It
@@ -58,6 +77,13 @@ remains available.
 If central sync fails and the desktop imports its bundled catalog, status is explicitly
 `stale_fallback`, includes the bundle generation time, and does not advance
 `last_successful_sync`.
+
+Catalog downloads use the application's `httpx` stack with separate connection/read
+timeouts, bounded streaming, transient retries, Content-Length checks, SHA-256 and
+gzip/schema validation, and a temporary staging directory. A versioned payload is
+promoted first and `latest.json` is replaced last, only after validation and database
+import succeed. A failed update therefore leaves the previous valid cache and local
+candidate state intact.
 
 The update regression covers catalog versions N, N+1, and N+2. N+1 adds a source,
 adds a job, and changes a JD while preserving candidate tracking state. N+2 marks the
