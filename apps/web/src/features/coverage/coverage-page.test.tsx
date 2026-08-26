@@ -16,6 +16,11 @@ vi.mock("@/lib/api/hooks", () => ({
     isLoading: false,
     isError: false,
   }),
+  useCatalogStatus: () => ({
+    data: { state: "success", last_successful_sync: "2026-08-23T12:00:00Z" },
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock("next-intl", () => ({
@@ -46,6 +51,9 @@ vi.mock("next-intl", () => ({
       degraded: "Degraded",
       failingBlocked: "Failing / blocked",
       lastRefresh: `Last successful refresh: ${values?.value ?? ""}`,
+      catalogSync: `Last successful local catalog sync: ${values?.value ?? ""}`,
+      catalogSyncFailed: "The current catalog sync failed; cached jobs remain available.",
+      sourceRefresh: `Last successful source / ATS refresh: ${values?.value ?? ""}`,
       notRecorded: "not yet recorded",
     };
     return messages[key] ?? key;
@@ -61,5 +69,7 @@ describe("CoveragePage", () => {
     expect(screen.getByText("Eligibility accounting")).toBeInTheDocument();
     expect(screen.getByText("Source health diagnostics")).toBeInTheDocument();
     expect(screen.getByText("greenhouse")).toBeInTheDocument();
+    expect(screen.getByTestId("coverage-freshness")).toHaveTextContent("Last successful local catalog sync");
+    expect(screen.getByTestId("coverage-freshness")).toHaveTextContent("Last successful source / ATS refresh");
   });
 });

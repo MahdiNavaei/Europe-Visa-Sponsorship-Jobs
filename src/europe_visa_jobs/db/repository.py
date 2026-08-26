@@ -72,6 +72,7 @@ def canonicalize_apply_url(value: str | None) -> str | None:
 class Repository:
     def __init__(self, session: Session) -> None:
         self.session = session
+        self.skill_ontology = SkillOntology()
 
     def upsert_company(
         self,
@@ -136,7 +137,10 @@ class Repository:
             and company_name_quality(normalized_job.company_name) == "verified",
         )
         profile = analyze_job(
-            normalized_job.title, normalized_job.description, normalized_job.job_family
+            normalized_job.title,
+            normalized_job.description,
+            normalized_job.job_family,
+            ontology=self.skill_ontology,
         )
         canonical_apply_url = canonicalize_apply_url(normalized_job.apply_url)
         stmt = select(Job).where(

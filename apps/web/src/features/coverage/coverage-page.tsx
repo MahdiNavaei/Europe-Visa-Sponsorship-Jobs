@@ -1,6 +1,6 @@
 "use client";
 
-import { useCoverage, useSourceHealth } from "@/lib/api/hooks";
+import { useCatalogStatus, useCoverage, useSourceHealth } from "@/lib/api/hooks";
 import { formatNumber } from "@/lib/utils/format";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -9,6 +9,7 @@ export function CoveragePage() {
   const t = useTranslations("coverage");
   const coverage = useCoverage();
   const health = useSourceHealth();
+  const catalog = useCatalogStatus();
 
   if (coverage.isLoading || health.isLoading) {
     return <main className="mx-auto max-w-5xl px-5 py-14">Loading coverage…</main>;
@@ -68,7 +69,7 @@ export function CoveragePage() {
           <p><span className="text-[var(--muted)]">{t("rejected")}</span><strong className="mt-1 block text-lg text-[var(--ink)]">{formatNumber(data.rejected_jobs, locale)}</strong></p>
         </div>
       </div>
-      <div className="mt-8 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-6">
+      <div className="mt-8 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-6" data-testid="coverage-freshness">
         <h2 className="text-xl font-black text-[var(--ink)]">{t("diagnostics")}</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">{t("diagnosticsBody")}</p>
         <div className="mt-5 overflow-x-auto">
@@ -77,7 +78,10 @@ export function CoveragePage() {
             <tbody>{providers.map(([provider, statuses]) => <tr key={provider} className="border-t border-[var(--line)]"><th className="py-3 font-semibold capitalize text-[var(--ink)]">{provider}</th><td className="py-3 text-[var(--ink)]">{formatNumber(statuses.healthy ?? 0, locale)}</td><td className="py-3 text-[var(--ink)]">{formatNumber(statuses.empty ?? 0, locale)}</td><td className="py-3 text-[var(--ink)]">{formatNumber(statuses.degraded ?? 0, locale)}</td><td className="py-3 text-[var(--ink)]">{formatNumber((statuses.failing ?? 0) + (statuses.blocked ?? 0), locale)}</td></tr>)}</tbody>
           </table>
         </div>
-        <p className="mt-5 text-sm text-[var(--muted)]">{t("lastRefresh", { value: data.last_refresh_at ? new Date(data.last_refresh_at).toLocaleString(locale) : t("notRecorded") })}</p>
+        <div className="mt-5 space-y-2 text-sm text-[var(--muted)]">
+          <p>{catalog.data?.state === "failed" ? t("catalogSyncFailed") : t("catalogSync", { value: catalog.data?.last_successful_sync ? new Date(catalog.data.last_successful_sync).toLocaleString(locale) : t("notRecorded") })}</p>
+          <p>{t("sourceRefresh", { value: data.last_refresh_at ? new Date(data.last_refresh_at).toLocaleString(locale) : t("notRecorded") })}</p>
+        </div>
       </div>
     </main>
   );
