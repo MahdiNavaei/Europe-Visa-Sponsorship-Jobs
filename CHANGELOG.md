@@ -1,6 +1,23 @@
 # Changelog
 
-## 1.1.4 — unreleased
+## 1.2.0 — 2026-08-26
+
+- Enforce the European technical-market scope in catalog publication and import so
+  US-only and other out-of-scope vacancies do not enter the default product catalog.
+- Harden streamed catalog delivery with retryable transport handling, size/SHA-256,
+  gzip/schema validation, atomic promotion, and preservation of the previous good cache.
+- Remove pathological per-row catalog reconciliation and reuse deterministic analysis
+  state to make full and incremental desktop synchronization practical.
+- Complete real-data user-flow validation across onboarding, recommendations, job
+  evidence, real Apply URLs, saved/applied state, persistence, Companies, Coverage,
+  Persian RTL, and the packaged Windows runtime.
+- Fix Job Detail translation labels, Persian recommendation explanations, freshness
+  terminology, and final browser/asset issues found by headed production E2E testing.
+- Publish the cleaned public repository under PolyForm Noncommercial 1.0.0 with
+  separate commercial licensing while preserving the MIT permissions of earlier
+  MIT-distributed versions.
+
+## 1.1.4 — 2026-08-25
 
 - Make the default browse and recommendation contract eligible-only; unknown jobs are
   available only through an explicit research filter.

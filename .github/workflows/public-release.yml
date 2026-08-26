@@ -1,0 +1,242 @@
+name: Publish requested release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".release/request.json"
+      - ".release/v*.md"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate release request and version consistency
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -er '.version' .release/request.json)
+          NOTES_FILE=$(jq -er '.notes_file' .release/request.json)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
+            exit 1
+          fi
+          if [[ "$NOTES_FILE" != ".release/v${VERSION}.md" || ! -f "$NOTES_FILE" ]]; then
+            echo "Release notes must exist at .release/v${VERSION}.md" >&2
+            exit 1
+          fi
+
+          WEB_VERSION=$(node -p "require('./apps/web/package.json').version")
+          PYPROJECT_VERSION=$(python - <<'PY'
+          import tomllib
+          with open('pyproject.toml', 'rb') as handle:
+              print(tomllib.load(handle)['project']['version'])
+          PY
+          )
+          BACKEND_VERSION=$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('src/europe_visa_jobs/__init__.py').read_text(encoding='utf-8')
+          match = re.search(r'__version__\s*=\s*["\x27]([^"\x27]+)["\x27]', text)
+          if not match:
+              raise SystemExit('Backend __version__ was not found')
+          print(match.group(1))
+          PY
+          )
+
+          for ACTUAL in "$WEB_VERSION" "$PYPROJECT_VERSION" "$BACKEND_VERSION"; do
+            if [[ "$ACTUAL" != "$VERSION" ]]; then
+              echo "Release version mismatch: requested=$VERSION actual=$ACTUAL" >&2
+              exit 1
+            fi
+          done
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse an existing tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.request.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; refusing to move or reuse it." >&2
+            exit 1
+          fi
+
+      - name: Wait for CI and Windows package on this exact commit
+        id: gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_workflow() {
+            local workflow="$1"
+            local label="$2"
+            local run_id=""
+            for _ in $(seq 1 100); do
+              run_id=$(gh run list \
+                --workflow "$workflow" \
+                --commit "$GITHUB_SHA" \
+                --event push \
+                --limit 20 \
+                --json databaseId,createdAt \
+                --jq 'sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+              if [[ -n "$run_id" ]]; then
+                status=$(gh run view "$run_id" --json status --jq '.status')
+                conclusion=$(gh run view "$run_id" --json conclusion --jq '.conclusion // ""')
+                echo "$label run $run_id: status=$status conclusion=$conclusion"
+                if [[ "$status" == "completed" ]]; then
+                  if [[ "$conclusion" != "success" ]]; then
+                    echo "$label did not succeed on $GITHUB_SHA." >&2
+                    exit 1
+                  fi
+                  printf '%s' "$run_id"
+                  return 0
+                fi
+              else
+                echo "Waiting for $label run on $GITHUB_SHA to appear..."
+              fi
+              sleep 15
+            done
+            echo "Timed out waiting for $label on $GITHUB_SHA." >&2
+            exit 1
+          }
+
+          CI_RUN=$(wait_for_workflow "ci.yml" "CI")
+          WINDOWS_RUN=$(wait_for_workflow "windows-package.yml" "Windows desktop package")
+          CI_RUN=$(printf '%s\n' "$CI_RUN" | tail -n 1)
+          WINDOWS_RUN=$(printf '%s\n' "$WINDOWS_RUN" | tail -n 1)
+          echo "ci_run_id=$CI_RUN" >> "$GITHUB_OUTPUT"
+          echo "windows_run_id=$WINDOWS_RUN" >> "$GITHUB_OUTPUT"
+
+      - name: Download validated Windows artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.request.outputs.version }}
+          WINDOWS_RUN_ID: ${{ steps.gates.outputs.windows_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh run download "$WINDOWS_RUN_ID" \
+            --name "career-radar-windows-v${VERSION}" \
+            --dir release-assets
+          test -s "release-assets/CareerRadar-Setup-v${VERSION}.exe"
+          test -s "release-assets/CareerRadar-Portable-v${VERSION}.zip"
+          test -s "release-assets/SHA256SUMS.txt"
+
+      - name: Verify checksums and determine signing truth
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINDOWS_RUN_ID: ${{ steps.gates.outputs.windows_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd release-assets
+            sha256sum --check SHA256SUMS.txt
+          )
+
+          MODE=$(gh run view "$WINDOWS_RUN_ID" --log \
+            | grep -oE 'Windows release mode: (SIGNED|UNSIGNED)' \
+            | tail -n 1 \
+            | awk '{print $4}')
+          if [[ "$MODE" != "SIGNED" && "$MODE" != "UNSIGNED" ]]; then
+            echo "Could not prove the Windows release signing mode from the successful package run." >&2
+            exit 1
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.request.outputs.version }}
+          TAG: ${{ steps.request.outputs.tag }}
+          NOTES_FILE: ${{ steps.request.outputs.notes_file }}
+          WINDOWS_RELEASE_MODE: ${{ steps.verify.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$NOTES_FILE" release-notes.md
+          if [[ "$WINDOWS_RELEASE_MODE" == "SIGNED" ]]; then
+            cat >> release-notes.md <<'EOF'
+
+          ### Windows package signing
+
+          The Windows launcher and installer in this release are Authenticode-signed and timestamped. SHA-256 checksums are published as an additional integrity check.
+          EOF
+          else
+            cat >> release-notes.md <<'EOF'
+
+          ### Windows package signing
+
+          The Windows package in this release is unsigned because no Authenticode code-signing certificate is configured for the repository. SHA-256 checksums are published for integrity verification. Windows SmartScreen may display an unknown-publisher warning.
+          EOF
+          fi
+
+          gh release create "$TAG" \
+            release-assets/CareerRadar-Setup-v${VERSION}.exe \
+            release-assets/CareerRadar-Portable-v${VERSION}.zip \
+            release-assets/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "Career Radar ${TAG} — Public Launch" \
+            --notes-file release-notes.md \
+            --latest
+
+      - name: Verify published tag, release and asset digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.request.outputs.version }}
+          TAG: ${{ steps.request.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')
+          if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Published tag points to $TAG_SHA instead of $GITHUB_SHA." >&2
+            exit 1
+          fi
+
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > published-release.json
+          test "$(jq -r '.draft' published-release.json)" = "false"
+          test "$(jq -r '.prerelease' published-release.json)" = "false"
+
+          for NAME in "CareerRadar-Setup-v${VERSION}.exe" "CareerRadar-Portable-v${VERSION}.zip"; do
+            LOCAL_SHA=$(sha256sum "release-assets/$NAME" | awk '{print $1}')
+            REMOTE_DIGEST=$(jq -r --arg name "$NAME" '.assets[] | select(.name == $name) | .digest // empty' published-release.json)
+            if [[ "$REMOTE_DIGEST" != "sha256:$LOCAL_SHA" ]]; then
+              echo "Published digest mismatch for $NAME: $REMOTE_DIGEST" >&2
+              exit 1
+            fi
+          done
+
+          for NAME in "CareerRadar-Setup-v${VERSION}.exe" "CareerRadar-Portable-v${VERSION}.zip" "SHA256SUMS.txt"; do
+            COUNT=$(jq -r --arg name "$NAME" '[.assets[] | select(.name == $name)] | length' published-release.json)
+            if [[ "$COUNT" != "1" ]]; then
+              echo "Expected exactly one published asset named $NAME." >&2
+              exit 1
+            fi
+          done
+
+          echo "Published $TAG from $GITHUB_SHA with verified Windows asset digests."
