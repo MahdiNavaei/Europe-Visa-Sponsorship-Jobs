@@ -8,7 +8,7 @@ version = "1.1.4"
 description = "Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 authors = [{ name = "Mahdi Navaei" }]
 dependencies = [
   "alembic>=1.14,<2",

@@ -1,6 +1,6 @@
-# Immigration Rule Registry — Phase 1
+# Immigration Rule Registry
 
-Phase 1 stores **route structure and sponsor-register requirements**, not volatile legal thresholds. This is intentional: salary thresholds and detailed candidate eligibility change and will be maintained as dated datasets in later work.
+The registry stores **route structure and sponsor-register requirements**, not volatile legal thresholds. This is intentional: salary thresholds and detailed candidate eligibility change and must be maintained as dated datasets.
 
 The engine is a job-discovery filter, not immigration advice.
 
@@ -8,19 +8,19 @@ The engine is a job-discovery filter, not immigration advice.
 
 Primary route: Highly Skilled Migrant.
 
-Strict Phase-1 gate requires a verified match in the IND recognised-sponsor register plus sufficient job-level evidence.
+The strict gate requires a verified match in the IND recognised-sponsor register plus sufficient job-level evidence.
 
 Official source:
 https://ind.nl/en/public-register-recognised-sponsors/public-register-work
 
 ## Germany
 
-Primary routes represented in Phase 1:
+Primary represented routes:
 
 - EU Blue Card
 - Skilled Worker Residence Permit
 
-Germany does not use the same employer sponsor-licence model as the Netherlands/UK, so Phase 1 requires strong job-level visa/work-permit evidence.
+Germany does not use the same employer sponsor-licence model as the Netherlands/UK, so the engine requires strong job-level visa/work-permit evidence.
 
 Official information:
 https://www.make-it-in-germany.com/en/visa-residence/types/eu-blue-card
@@ -29,7 +29,7 @@ https://www.make-it-in-germany.com/en/visa-residence/types/eu-blue-card
 
 Primary route: Skilled Worker.
 
-Strict Phase-1 gate requires a verified match in the UKVI Register of Licensed Sponsors (Workers) plus sufficient vacancy-level evidence.
+The strict gate requires a verified match in the UKVI Register of Licensed Sponsors (Workers) plus sufficient vacancy-level evidence.
 
 Official source:
 https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers
@@ -41,7 +41,7 @@ Routes represented:
 - Critical Skills Employment Permit
 - General Employment Permit
 
-Employer permit history can be added as evidence, but Phase 1 does not treat past permits as a blanket sponsorship guarantee.
+Employer permit history can be added as evidence, but the engine does not treat past permits as a blanket sponsorship guarantee.
 
 Official source:
 https://enterprise.gov.ie/en/what-we-do/workplace-and-skills/employment-permits/
@@ -50,7 +50,7 @@ https://enterprise.gov.ie/en/what-we-do/workplace-and-skills/employment-permits/
 
 Route represented: Work Permit.
 
-Phase 1 requires strong job-level permit/immigration support evidence.
+The engine requires strong job-level permit/immigration support evidence.
 
 Official source:
 https://www.migrationsverket.se/en/you-want-to-apply/work/employee-or-self-employed/employees.html
@@ -62,7 +62,7 @@ Routes represented:
 - Residence Permit for Specialists
 - Residence Permit for an Employed Person
 
-Phase 1 requires strong job-level permit/immigration support evidence.
+The engine requires strong job-level permit/immigration support evidence.
 
 Official source:
 https://migri.fi/en/working-in-finland
@@ -74,7 +74,7 @@ Routes represented:
 - Pay Limit Scheme
 - Positive List for People with a Higher Education
 
-Phase 1 requires strong job-level permit/immigration support evidence.
+The engine requires strong job-level permit/immigration support evidence.
 
 Official source:
 https://www.nyidanmark.dk/en-GB/Applying/Work

@@ -1,6 +1,7 @@
-# Release Checklist
+# Release checklist
 
-This checklist is intentionally evidence-driven. Items are checked only after the corresponding GitHub Actions release gate has passed on the final Phase 4 head.
+This operational checklist is intentionally evidence-driven. Check an item only after
+the corresponding validation has passed on the release candidate SHA.
 
 ## Code quality
 
@@ -64,10 +65,8 @@ This checklist is intentionally evidence-driven. Items are checked only after th
 
 - [ ] Final UI screenshots are committed under `docs/assets/`
 - [ ] README includes product screenshots and production startup instructions
-- [ ] Phase 4 documentation records final validation results
-- [ ] Roadmap marks all four phases complete
-- [ ] PR #4 description matches actual validation results
-- [ ] Final Phase 4 PR is merged only after all required gates are green
+- [ ] Release notes and README claims match the validated release candidate
+- [ ] Release PR is merged only after all required gates are green
 
 ## Windows desktop distribution
 
