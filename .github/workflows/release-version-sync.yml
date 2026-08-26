@@ -1,0 +1,38 @@
+name: Release version sync (temporary)
+
+on:
+  push:
+    branches: ["release/v1.2.0"]
+    paths:
+      - ".github/workflows/release-version-sync.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: release/v1.2.0
+
+      - name: Synchronize npm lockfile version
+        working-directory: apps/web
+        shell: bash
+        run: npm version 1.2.0 --no-git-tag-version --allow-same-version --ignore-scripts
+
+      - name: Commit canonical lockfile update
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/web/package-lock.json; then
+            echo "package-lock.json already matches v1.2.0"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/package-lock.json
+          git commit -m "release: sync npm lockfile to 1.2.0"
+          git push origin HEAD:release/v1.2.0
