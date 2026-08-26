@@ -1,6 +1,6 @@
 # ATS Connectors
 
-Phase 1 intentionally prefers public first-party ATS feeds over scraping LinkedIn or other aggregators.
+Career Radar intentionally prefers public first-party ATS feeds over scraping LinkedIn or other aggregators.
 
 ## Greenhouse
 

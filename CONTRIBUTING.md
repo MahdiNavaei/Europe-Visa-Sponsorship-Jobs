@@ -1,10 +1,9 @@
 # Contributing
 
-Thanks for helping improve Europe Visa Sponsorship Jobs.
+Thanks for helping improve Career Radar / Europe Visa Sponsorship Jobs. Accuracy
+matters more than job volume: a false sponsorship claim can waste a candidate's time.
 
-The project is designed to become community-driven once public. Accuracy matters more than job volume: a false claim that a vacancy supports immigration can waste a candidate's time.
-
-## Phase 1 contribution areas
+## Useful contribution areas
 
 Contributions are especially useful for:
 
@@ -19,13 +18,26 @@ Contributions are especially useful for:
 
 ## Non-negotiable rules
 
-1. **No paid LLM/API dependency.** Phase 1 must run without OpenAI, Anthropic, Gemini, or similar services.
+1. **No paid LLM/API dependency at runtime.** The product must run without OpenAI, Anthropic, Gemini, or similar paid services.
 2. **Evidence over guesses.** Missing evidence should produce `unknown`, not `eligible`.
 3. **Hard negatives win.** Existing-work-authorization, citizenship, EU/EEA-only, or no-sponsorship restrictions must override positive wording.
 4. **A sponsor company does not imply every job is sponsored.** Vacancy-level evidence is still required.
 5. **Prefer first-party sources.** Use documented/public company ATS feeds and official immigration/sponsor sources where possible.
 6. **Do not bypass authentication, anti-bot controls, or website restrictions.**
 7. **Add tests with behavior changes.**
+
+## Contribution licensing
+
+The repository is source-available under the PolyForm Noncommercial License 1.0.0.
+By submitting a contribution, you represent that you have the right to submit it and
+agree it may be distributed as part of this project under that public license.
+
+To preserve the project's dual-licensing model, you also grant **Mahdi Navaei**, as
+maintainer, a perpetual, worldwide, non-exclusive, royalty-free license to use,
+reproduce, modify, distribute, sublicense, and relicense your contribution, including
+under commercial terms. This grant applies only to your contribution and does not
+transfer ownership of your copyright. If you lack authority to make these grants,
+please do not submit the contribution.
 
 ## Development setup
 

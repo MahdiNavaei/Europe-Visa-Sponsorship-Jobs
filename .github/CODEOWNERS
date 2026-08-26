@@ -2,5 +2,12 @@
 .github/workflows/windows-package.yml @MahdiNavaei
 CODE_SIGNING_POLICY.md @MahdiNavaei
 PRIVACY.md @MahdiNavaei
-.signpath/ @MahdiNavaei
 packaging/windows/ @MahdiNavaei
+
+# Licensing-sensitive paths
+LICENSE @MahdiNavaei
+NOTICE @MahdiNavaei
+COMMERCIAL_LICENSE.md @MahdiNavaei
+DATA_LICENSES.md @MahdiNavaei
+CONTRIBUTING.md @MahdiNavaei
+pyproject.toml @MahdiNavaei

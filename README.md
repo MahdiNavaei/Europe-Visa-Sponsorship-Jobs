@@ -1,230 +1,110 @@
-# Europe Visa Sponsorship Jobs — Career Radar
+# Career Radar — Europe Visa Sponsorship Jobs
 
-> Evidence-based European tech job intelligence for non-EU candidates who need visa sponsorship or relocation support.
+Career Radar is evidence-based European tech-job intelligence for non-EU candidates
+who need visa sponsorship or relocation support. It is designed to answer a narrower,
+more useful question than a generic job board: **which current European technical roles
+have evidence worth a candidate's time?**
 
-**Career Radar v1.1.4** is a strict, explainable career radar: it collects current technical vacancies, rejects hard work-authorization restrictions, evaluates sponsorship evidence, ranks opportunities against a candidate profile, and explains why a job is—or is not—a realistic target.
-
-It uses **no LLM and no paid AI API at runtime**. Decisions are deterministic, inspectable, reproducible, and backed by stored evidence.
+It uses deterministic rules and stored evidence—no LLM or paid AI API is required at
+runtime.
 
 ![Career Radar dashboard](docs/assets/dashboard-en.png)
 
-## Windows — one-click install
+## What makes it different
 
-For most Windows users, no developer setup is needed.
+- European technical-market scope is enforced in catalog publication and import.
+- Public employer ATS sources provide the underlying vacancy and application URLs.
+- Sponsorship and relocation language is evaluated alongside explicit hard restrictions.
+- A sponsor-register entry alone never makes every vacancy eligible.
+- Missing or ambiguous evidence remains `unknown`; hard restrictions win.
+- Candidate matching, saved jobs, notes, and application status stay local when the
+  global market catalog refreshes.
+- The product is available in English and Persian with server-rendered RTL support.
 
-1. Open **GitHub Releases**.
-2. Download the setup file matching the current release version (for example, `CareerRadar-Setup-v1.1.4.exe`).
-3. Install and launch **Career Radar**.
+Career Radar deliberately prefers false negatives over false-positive sponsorship
+claims. It is not immigration advice, and it cannot guarantee that an employer will
+sponsor a particular candidate.
 
-The Windows package bundles the Python backend runtime, the production Next.js server, a private Node runtime, database migrations, and project configuration. Users do **not** need to install Python, Node.js, npm packages, pip packages, Docker, or PostgreSQL.
+## Eligibility at a glance
 
-The v1.1 release package will create a local SQLite database, bootstrap a generated snapshot of live-verified ATS boards, load official sponsor-evidence records, fetch current ATS jobs, start the API and web app on loopback-only ports, and open the browser automatically. It will not run an internet-wide discovery crawl on desktop startup. A portable ZIP and SHA-256 checksums are published with the installer as well.
+| Status | Meaning | Default experience |
+|---|---|---|
+| `eligible` | Strong job-level sponsorship or relocation evidence, with no overriding restriction | Shown |
+| `unknown` | Evidence is incomplete, ambiguous, or only company-level | Hidden unless explicitly included |
+| `rejected` | A hard restriction was found, such as no sponsorship or existing work authorization | Hidden |
 
-Windows artifacts may be signed or unsigned depending on the configured release mode; release notes and [`docs/WINDOWS.md`](docs/WINDOWS.md) explain how to verify the package and its SHA-256 checksums.
-Third-party dataset provenance and reuse boundaries are documented in [`DATA_LICENSES.md`](DATA_LICENSES.md).
+Evidence is retained with the job so candidates can inspect the reason for a result.
+Upstream employer content can change after collection; source freshness and provenance
+are surfaced rather than hidden.
 
-### Code signing policy
+## Install on Windows
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation. Official Windows release artifacts follow the repository's [`Code signing policy`](CODE_SIGNING_POLICY.md). Desktop data handling is documented in [`PRIVACY.md`](PRIVACY.md).
+The current downloadable release is [v1.1.4](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.1.4).
+Download the setup executable or portable ZIP from
+[Releases](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases),
+verify the published SHA-256 checksum, then install and launch—Python, Node.js, Docker,
+and PostgreSQL are not required on the user's machine.
 
-## Why this project exists
+The release uses a local SQLite database and synchronizes a hash-verified, versioned
+market catalog. Releases may be signed or unsigned depending on the configured release
+mode; see [Windows packaging](docs/WINDOWS.md) and the
+[code-signing policy](CODE_SIGNING_POLICY.md).
 
-International candidates routinely lose time on vacancies that look global but later contain restrictions such as:
+`main` also contains post-v1.1.4 launch hardening. That work is not represented as a
+retroactive claim about the already-published v1.1.4 binaries.
 
-- `must already have the right to work`
-- `no visa sponsorship`
-- `EU/EEA candidates only`
-- `must currently reside in the EU`
+## Live data and coverage
 
-Career Radar treats those sentences as first-class eligibility data rather than footnotes.
+Scheduled workflows refresh configured public ATS sources and publish a versioned
+catalog to the `market-data` branch. The catalog is compressed, SHA-256 verified,
+gzip/schema validated, staged, and atomically imported by clients. A failed update
+preserves the previous valid local catalog.
 
-A company appearing in a sponsor register is **not** enough to approve every vacancy. Job-level evidence still matters, and hard negative restrictions always win.
-
-## What v1.1 includes
-
-- Public ATS connectors: Greenhouse, Lever, Ashby, Workable, Personio
-- Generated, validated source-registry snapshot for desktop bootstrap (the release build rejects a snapshot with fewer than 500 verified boards)
-- Daily source refresh workflow
-- Technical-role classification
-- Country inference and normalized job identity
-- Visa, relocation, international-candidate, and hard-restriction detection
-- Country-specific immigration rule registry
-- Compressed official UKVI and IND sponsor-registry evidence cache, loaded before production eligibility analysis
-- Strict `eligible / rejected / unknown` eligibility states
-- Candidate profiles and deterministic skill ontology
-- Explainable candidate/job matching and ranking
-- Company visa-friendliness intelligence
-- Saved jobs and application-stage tracking
-- FastAPI + PostgreSQL backend
-- Bilingual Next.js application (`/en`, `/fa`) with true RTL Persian
-- Light/dark themes and responsive desktop/mobile UI
-- Docker production stack
-- Dependency-free Windows installer + portable package
-- PostgreSQL migration round-trip validation
-- Chromium, Firefox, and WebKit E2E coverage
-- Accessibility, security, dependency, and public-repository audits
-- Lighthouse performance budgets
-- Live public-ATS-to-browser E2E validation
-
-## Strict eligibility policy
-
-| Status | Meaning | Default UI/API |
-|---|---|---:|
-| `eligible` | Strong sponsorship/relocation evidence and no hard restriction | Shown |
-| `rejected` | A hard restriction was found | Hidden |
-| `unknown` | Evidence is incomplete or ambiguous | Hidden |
-
-The system intentionally prefers false negatives over false positives. If it cannot prove enough, the job stays `unknown` instead of wasting a candidate's time.
-
-## Verified live-data path
-
-Phase 4 contains a networked E2E gate with **no mocked job data path**:
-
-```text
-Public ATS
-   ↓
-Connector + normalization
-   ↓
-Eligibility engine
-   ↓
-PostgreSQL
-   ↓
-FastAPI
-   ↓
-Production Next.js
-   ↓
-Real browser → Job detail → Apply URL
-```
-
-Release validation on **2026-08-21 UTC** verified all 10 configured production feeds live and fetched **1,373 raw current positions** across them.
-
-A smaller independent Greenhouse + Ashby smoke set was then ingested twice into fresh PostgreSQL:
-
-- 96 active technical jobs
-- 79 postings inside the 60-day freshness window
-- 40 strict-mode eligible jobs
-- identical source/external-id key set after immediate re-ingestion
-- real FastAPI response verified
-- real production Next.js UI verified in Chromium
-- job detail and outbound application link verified
-
-The smoke run included current postings from N26 and Clera dated August 19–21, 2026.
-
-Live upstream services can change, so CI also validates the configured source catalog rather than assuming ATS slugs remain valid forever.
-
-## Daily refresh: what it guarantees
-
-`.github/workflows/daily-ingest.yml` is scheduled for **03:17 UTC every day** and can also be dispatched manually.
-
-It:
-
-1. migrates the persistent database,
-2. bootstraps the generated verified source registry and audited manual seeds,
-3. re-fetches current ATS vacancies,
-4. upserts jobs deterministically,
-5. deactivates jobs that disappeared only when provider enumeration is complete,
-6. re-runs eligibility analysis,
-7. reports active, eligible, and newest-posting statistics.
-
-A hosted deployment should provide persistent PostgreSQL through `DATABASE_URL`.
-When the secret is absent, the workflow restores and republishes a sanitized,
-branch-backed SQLite checkpoint instead of losing state between runners.
-
-**Daily refresh does not mean employers publish a new eligible vacancy every calendar day.** It means the configured feeds are checked every day, and newly published eligible jobs appear after the next successful refresh.
-
-The Windows desktop runtime opens the local UI after migration/seed and synchronizes the
-global catalog in the background. A manual refresh remains available, but it is not
-required for routine updates. Cached catalog data remains usable offline.
-
-Career Radar refreshes configured sources daily and surfaces newly discovered eligible opportunities. This does not guarantee that an employer publishes a new eligible vacancy every calendar day.
-
-## Source coverage and refresh
-
-`config/sources.json` is the small, auditable manual seed set. It is only a bootstrap
-input. Scheduled discovery and source health use `SOURCE_STATE_DATABASE_URL` when
-configured and otherwise use the sanitized branch-backed SQLite checkpoint. Daily
-ingestion publishes a versioned gzip catalog plus `latest.json` to the `market-data`
-branch. Existing clients consume that manifest without reinstalling.
-The packaged `config/source-registry.snapshot.json` remains an offline fallback, not the
-continuously updated source universe.
-
-The manual seeds currently include public feeds for:
-
-- N26
-- HelloFresh
-- Atolls
-- Canonical
-- GetYourGuide
-- trivago
-- Kalepa
-- Coinbase
-- PRISMA European Capacity Platform
-- Clera
-
-Provider pages and archived/index URLs are candidates, never coverage claims. A
-board enters the snapshot only after its current provider endpoint (or a
-documented provider fallback) succeeds. Coverage metrics always describe the
-monitored catalog, not all European vacancies.
+Coverage describes monitored, verified sources—not every European employer or vacancy.
+A refreshed catalog does not guarantee a new eligible vacancy every day. Read the
+[data-delivery contract](docs/data-delivery.md),
+[source discovery guide](docs/SOURCE_DISCOVERY.md), and
+[data licensing boundaries](DATA_LICENSES.md) before redistributing data.
 
 ## Architecture
 
 ```text
-ATS connectors
-   │
-   ├─ Greenhouse
-   ├─ Lever
-   ├─ Ashby
-   ├─ Workable
-   └─ Personio
-   ↓
-Normalization + role classification
-   ↓
-Visa / relocation / restriction evidence
-   ↓
-Country rules + sponsor evidence
-   ↓
-Strict eligibility engine
-   ↓
-PostgreSQL / local Windows SQLite
-   ├─ jobs + evidence
-   ├─ companies + sponsor records
-   ├─ candidates
-   ├─ application states
-   └─ ingestion runs
-
-Global market data is published separately from local candidate state. Catalog imports
-are hash-verified, staged, and transactional; profiles, saved jobs, application
-tracking, notes, and preferences are never replaced by a market-data update. See
-[`docs/data-delivery.md`](docs/data-delivery.md) for the manifest and provider
-completeness contract.
-   ↓
-Candidate matching + ranking
-   ↓
-FastAPI
-   ↓
-Next.js Career Radar (EN / FA RTL)
+Public employer ATS sources
+          ↓
+Normalization + technical-role classification
+          ↓
+Sponsorship / relocation evidence + hard restrictions
+          ↓
+Country rules + sponsor-register evidence
+          ↓
+Versioned European market catalog ──→ local desktop import
+          ↓                                  ↓
+FastAPI API ← deterministic matching ← candidate-local state
+          ↓
+Next.js web app (English / Persian RTL)
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PHASE_2.md`](docs/PHASE_2.md), [`docs/PHASE_3.md`](docs/PHASE_3.md), and [`docs/PHASE_4.md`](docs/PHASE_4.md).
+The backend supports PostgreSQL and SQLite. The desktop runtime packages a private
+backend, production Next.js server, migrations, and configuration. See
+[architecture](docs/ARCHITECTURE.md), [product rules](docs/PRODUCT.md), and
+[privacy](PRIVACY.md).
 
 ## Developer quick start
 
-### Backend with SQLite
+### Backend
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-
 alembic upgrade head
 uvicorn europe_visa_jobs.api.app:app --reload
 ```
 
-API: `http://localhost:8000`  
-Swagger: `http://localhost:8000/docs`  
-Health: `http://localhost:8000/health`
+The API is available at `http://localhost:8000`; OpenAPI is at
+`http://localhost:8000/docs`.
 
-### Web application
+### Web app
 
 ```bash
 cd apps/web
@@ -232,122 +112,64 @@ npm ci
 npm run dev
 ```
 
-English: `http://localhost:3000/en`  
-Persian RTL: `http://localhost:3000/fa`
+Open `http://localhost:3000/en` or `http://localhost:3000/fa`.
 
-The web app defaults to `http://localhost:8000` for the API. Set `NEXT_PUBLIC_API_URL` when using another origin and configure `WEB_ORIGIN` on the backend.
-
-### Production-like Docker stack
-
-A production-style stack with PostgreSQL, FastAPI, and standalone Next.js is provided:
+For a production-style local stack, set a strong `POSTGRES_PASSWORD` and run:
 
 ```bash
-export POSTGRES_PASSWORD='choose-a-strong-password'
 docker compose -f docker-compose.production.yml up -d --build
 ```
 
-The production compose file intentionally has no default database password.
+## Validation and reliability
 
-## Run real job ingestion
-
-The manual seeds are in `config/sources.json`; production registry operations
-use the persisted verified registry.
-
-```bash
-evj-ingest sources bootstrap --config config/sources.json --snapshot config/source-registry.snapshot.json
-evj-ingest jobs --registry
-```
-
-To maintain a custom deployment, edit that catalog or start from `config/sources.example.json` and validate the ATS slugs before relying on them.
-
-## Demo data
-
-For UI development without external network traffic:
-
-```bash
-python scripts/seed_demo.py
-```
-
-The demo dataset is deterministic and fictional; it never claims that a real employer sponsors a fictional vacancy.
-
-## Candidate intelligence API
-
-```http
-POST /api/v1/candidates
-GET  /api/v1/candidates/{candidate_id}
-GET  /api/v1/recommendations/{candidate_id}
-GET  /api/v1/recommendations/{candidate_id}/explain
-```
-
-Recommendations combine visa compatibility, skill coverage, experience/seniority, country preference, role similarity, and company evidence. Ranking weights live in [`config/ranking.yaml`](config/ranking.yaml), while skill aliases/categories live in [`data/skills.yaml`](data/skills.yaml).
-
-## Job API
-
-Default behavior returns eligible jobs only:
-
-```http
-GET /api/v1/jobs
-GET /api/v1/jobs/{id}
-GET /api/v1/jobs?country=Germany&category=ai_ml&limit=20&offset=0
-```
-
-Pagination exposes `X-Total-Count`. Job detail returns the evidence used by the eligibility engine.
-
-## Verification
-
-Backend:
+The repository validates Python 3.11/3.12, migrations, backend tests and coverage,
+dependency audits, frontend lint/unit/build checks, browser flows, public-source health,
+real catalog import, and a Windows silent-install/runtime smoke test. The Windows test
+also exercises two market-data updates through the same installed runtime.
 
 ```bash
 pytest --cov=europe_visa_jobs --cov-report=term-missing --cov-fail-under=85
 ruff check src tests scripts
 mypy src scripts --ignore-missing-imports
-```
 
-Frontend:
-
-```bash
 cd apps/web
 npm ci
 npm run lint
 npm test
 npm run build
-npx playwright test
 ```
 
-Release CI additionally validates:
+## Limitations
 
-- Python 3.11 and 3.12
-- SQLite and PostgreSQL Alembic round trips
-- backend and frontend production builds
-- Chromium / Firefox / WebKit critical flows
-- live public ATS source health
-- live ATS → PostgreSQL → API → production browser E2E
-- Windows self-contained installer build and silent-install smoke test
-- `pip-audit` and `npm audit --audit-level=high`
-- secret/local-artifact/public-repository safety
-- accessibility and responsive behavior
-- Lighthouse budgets for English and Persian
-- fresh-checkout production Docker acceptance
+- Employer policy, job text, and immigration rules can change.
+- A role can be technically eligible for the catalog while still being unsuitable for
+  an individual candidate.
+- Unknown does not mean ineligible; it means the product lacks enough evidence to make
+  a positive claim.
+- Career Radar is not legal or immigration advice.
 
-## Project status
+## License and commercial use
 
-All four v1 phases are implemented:
+This repository is **source-available**, not OSI open source. Current distributions are
+licensed under [PolyForm Noncommercial 1.0.0](LICENSE)
+(`PolyForm-Noncommercial-1.0.0`): noncommercial use, modification, and redistribution
+are permitted subject to the license and required notices. Commercial use requires a
+separate written agreement; see [commercial licensing](COMMERCIAL_LICENSE.md).
 
-1. **Core Platform & Data Intelligence Engine** ✅
-2. **Candidate Matching & Intelligence** ✅
-3. **Professional bilingual UI/UX** ✅
-4. **Full Testing, Integration & E2E Hardening** ✅
+Earlier versions distributed under MIT retain the MIT permissions granted with those
+versions. The PolyForm terms apply prospectively to distributions carrying the current
+license.
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Third-party job content, government registers, and dependencies are not relicensed by
+the project license. See [DATA_LICENSES.md](DATA_LICENSES.md).
 
-## Accuracy and legal boundary
+## Contributing and support
 
-Visa and sponsorship results are deterministic evidence signals, **not legal or immigration advice and not a sponsorship guarantee**. Employer policy and immigration rules can change after data is collected. Evidence is retained so decisions can be audited and refreshed.
+Contributions that improve evidence quality, ATS reliability, accessibility, tests, and
+documentation are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a
+pull request; it includes the contribution licensing terms needed for the dual-licensing
+model.
 
-## License
-
-MIT
-
----
-
-Keywords: Europe visa sponsorship jobs, EU visa sponsorship jobs, relocation jobs Europe, non-EU developer jobs, AI jobs Europe, data jobs Europe, Blue Card jobs, Highly Skilled Migrant jobs, Skilled Worker sponsorship jobs.
+For commercial licensing, partnerships, or sponsorship discussions, contact
+[Mahdi Navaei](https://github.com/MahdiNavaei). Financial support and commercial rights
+are separate.

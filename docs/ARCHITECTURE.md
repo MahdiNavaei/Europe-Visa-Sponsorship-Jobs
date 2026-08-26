@@ -1,4 +1,4 @@
-# Phase 1–2 Architecture
+# Architecture
 
 ## Design goals
 
@@ -32,7 +32,7 @@ Every connector receives a `SourceConfig` and returns `list[NormalizedJob]`.
 
 Provider-specific fields are converted into the canonical model before eligibility logic is executed. No eligibility rule is allowed inside an ATS connector.
 
-Supported Phase-1 feeds:
+Supported feeds:
 
 | ATS | Feed |
 |---|---|
@@ -109,8 +109,8 @@ Tables:
 - `source_health_events`
 - `candidates`
 
-Phase 2 adds persisted job intelligence fields (`required_skills`, `preferred_skills`, minimum
-experience, and seniority) while retaining runtime analysis for legacy rows.
+Persisted job intelligence fields include `required_skills`, `preferred_skills`, minimum
+experience, and seniority; runtime analysis remains available for legacy rows.
 
 The unique job identity is:
 
