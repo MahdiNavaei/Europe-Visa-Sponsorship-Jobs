@@ -334,6 +334,136 @@ def test_uningested_sources_can_prioritize_observed_job_volume(db_session):
     assert registry.un_ingested_verified_sources(largest_first=True) == [sources[1], sources[0]]
 
 
+def test_due_ingestion_scheduler_is_deterministic_fair_and_respects_backoff(db_session):
+    registry = SourceRegistry(db_session)
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+
+    def add_source(
+        identifier: str,
+        *,
+        ingested_at: datetime | None,
+        status: str = SourceStatus.HEALTHY.value,
+        enabled: bool = True,
+        retry_after: datetime | None = None,
+    ):
+        source = registry.upsert_candidate(
+            SourceCandidate(
+                provider=ATSProvider.GREENHOUSE,
+                board_identifier=identifier,
+                canonical_url=f"https://boards.greenhouse.io/{identifier}",
+                discovery_method="scheduler_test",
+            ),
+            enabled=enabled,
+        )
+        source.verified_at = now - timedelta(days=30)
+        source.status = status
+        source.validation_state = SourceValidationState.VERIFIED.value
+        source.last_ingested_at = ingested_at
+        source.retry_after = retry_after
+        return source
+
+    due = [
+        add_source(f"due-{index}", ingested_at=now - timedelta(hours=40 - index))
+        for index in range(6)
+    ]
+    never = [add_source(f"never-{index}", ingested_at=None) for index in range(12)]
+    recent = add_source("recent", ingested_at=now - timedelta(hours=2))
+    backed_off = add_source(
+        "backed-off",
+        ingested_at=now - timedelta(days=2),
+        status=SourceStatus.DEGRADED.value,
+        retry_after=now + timedelta(hours=1),
+    )
+    retry_due = add_source(
+        "retry-due",
+        ingested_at=now - timedelta(days=2),
+        status=SourceStatus.FAILING.value,
+        enabled=False,
+        retry_after=now - timedelta(minutes=1),
+    )
+    db_session.flush()
+
+    first = registry.due_for_ingestion(
+        refresh_interval=timedelta(hours=18),
+        now=now,
+        limit=4,
+        stale_share=0.75,
+    )
+    assert [source.board_identifier for source in first] == [
+        "retry-due",
+        "due-0",
+        "due-1",
+        "never-0",
+    ]
+    assert recent not in first
+    assert backed_off not in first
+
+    # Mark each bounded batch as processed and prove that both partitions make
+    # progress across repeated scheduler runs. The old last_ingested_at-NULL
+    # selector would never include any of the due sources above.
+    selected_ids: set[int] = set()
+    for _ in range(6):
+        batch = registry.due_for_ingestion(
+            refresh_interval=timedelta(hours=18),
+            now=now,
+            limit=4,
+            stale_share=0.75,
+        )
+        if not batch:
+            break
+        selected_ids.update(source.id for source in batch)
+        for source in batch:
+            source.last_ingested_at = now
+        db_session.flush()
+
+    assert {source.id for source in due} <= selected_ids
+    assert retry_due.id in selected_ids
+    assert {source.id for source in never} <= selected_ids
+
+
+def test_verified_snapshot_does_not_erase_newer_ingestion_backoff(db_session):
+    registry = SourceRegistry(db_session)
+    source = registry.import_verified_snapshot(
+        SourceConfig(
+            provider=ATSProvider.GREENHOUSE,
+            company_name="Backoff Co",
+            slug="backoff-co",
+            metadata={
+                "snapshot_health": {
+                    "validation_state": "verified",
+                    "health_state": "healthy",
+                    "last_success_at": "2026-08-24T10:00:00+00:00",
+                    "last_checked_at": "2026-08-24T10:00:00+00:00",
+                }
+            },
+        )
+    )
+    source.status = SourceStatus.FAILING.value
+    source.enabled = False
+    source.last_checked_at = datetime(2026, 8, 26, 10, 0, tzinfo=UTC)
+    source.retry_after = datetime(2026, 8, 26, 16, 0, tzinfo=UTC)
+    db_session.flush()
+
+    refreshed = registry.import_verified_snapshot(
+        SourceConfig(
+            provider=ATSProvider.GREENHOUSE,
+            company_name="Backoff Co",
+            slug="backoff-co",
+            metadata={
+                "snapshot_health": {
+                    "validation_state": "verified",
+                    "health_state": "healthy",
+                    "last_success_at": "2026-08-24T10:00:00+00:00",
+                    "last_checked_at": "2026-08-24T10:00:00+00:00",
+                }
+            },
+        )
+    )
+    assert refreshed.status == SourceStatus.FAILING.value
+    assert refreshed.enabled is False
+    assert refreshed.retry_after == datetime(2026, 8, 26, 16, 0, tzinfo=UTC)
+
+
 def test_two_scheduled_runs_retain_registry_state_and_skip_cached_candidates(db_session):
     registry = SourceRegistry(db_session)
     verified = registry.upsert_candidate(

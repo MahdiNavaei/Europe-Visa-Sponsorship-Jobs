@@ -52,10 +52,13 @@ mode; see [Windows packaging](docs/WINDOWS.md) and the
 
 ## Live data and coverage
 
-Scheduled workflows refresh configured public ATS sources and publish a versioned
-catalog to the `market-data` branch. The catalog is compressed, SHA-256 verified,
-gzip/schema validated, staged, and atomically imported by clients. A failed update
-preserves the previous valid local catalog.
+Scheduled workflows revisit known public ATS boards and publish a versioned catalog
+to the `market-data` branch. Verified boards become due after 18 hours; an hourly,
+fair bounded scheduler gives the current registry an approximately 25-hour worst-case
+revisit window while reserving capacity for newly verified boards. The workflow
+refuses to claim that bound if registry growth exceeds its configured capacity. The
+catalog is compressed, SHA-256 verified, gzip/schema validated, staged, and atomically
+imported by clients. A failed update preserves the previous valid local catalog.
 
 Coverage describes monitored, verified sources—not every European employer or vacancy.
 A refreshed catalog does not guarantee a new eligible vacancy every day. Read the

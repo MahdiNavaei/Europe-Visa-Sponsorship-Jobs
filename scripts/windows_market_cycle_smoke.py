@@ -19,11 +19,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from europe_visa_jobs.catalog.delivery import publish_catalog
-from europe_visa_jobs.db.models import Base, Job
+from europe_visa_jobs.db.models import Base, CandidateJobState, Job
 from europe_visa_jobs.db.repository import Repository
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.eligibility import EligibilityEngine
-from europe_visa_jobs.schemas import ATSProvider, JobFamily, NormalizedJob, SourceConfig
+from europe_visa_jobs.schemas import (
+    ATSProvider,
+    CandidateCreate,
+    JobFamily,
+    NormalizedJob,
+    SourceConfig,
+)
 
 
 def _job(external_id: str, title: str) -> NormalizedJob:
@@ -114,6 +120,53 @@ def _active_jobs(data_dir: Path) -> dict[str, tuple[str, int]]:
     return {str(external_id): (str(title), int(active)) for external_id, title, active in rows}
 
 
+def _attach_local_state(data_dir: Path) -> int:
+    engine = create_engine(f"sqlite:///{(data_dir / 'career-radar.db').as_posix()}")
+    try:
+        with Session(engine) as session:
+            candidate = Repository(session).create_candidate(
+                CandidateCreate(
+                    name="Existing Installed User",
+                    target_roles=["Backend Engineer"],
+                    skills=["Python"],
+                    preferred_countries=["Germany"],
+                )
+            )
+            job = session.query(Job).filter_by(source_slug="cycle-smoke", external_id="one").one()
+            session.add(
+                CandidateJobState(
+                    candidate_id=candidate.id,
+                    job_id=job.id,
+                    saved=True,
+                    application_status="applied",
+                    note="Persist across catalog refresh",
+                )
+            )
+            session.commit()
+            return candidate.id
+    finally:
+        engine.dispose()
+
+
+def _assert_local_state(data_dir: Path, candidate_id: int) -> None:
+    engine = create_engine(f"sqlite:///{(data_dir / 'career-radar.db').as_posix()}")
+    try:
+        with Session(engine) as session:
+            candidate = Repository(session).get_candidate(candidate_id)
+            if candidate is None or candidate.name != "Existing Installed User":
+                raise RuntimeError("N+1 catalog sync did not preserve the installed candidate profile")
+            changed_job = session.query(Job).filter_by(
+                source_slug="cycle-smoke", external_id="one"
+            ).one()
+            tracking = session.query(CandidateJobState).filter_by(
+                candidate_id=candidate_id, job_id=changed_job.id
+            ).one()
+            if not tracking.saved or tracking.application_status != "applied" or tracking.note != "Persist across catalog refresh":
+                raise RuntimeError("N+1 catalog sync did not preserve Saved/Applied/notes state")
+    finally:
+        engine.dispose()
+
+
 def run(executable: Path) -> None:
     root = Path(tempfile.mkdtemp(prefix="career-radar-market-cycle-"))
     _build_catalogs(root)
@@ -131,6 +184,7 @@ def run(executable: Path) -> None:
         first_jobs = _active_jobs(data_dir)
         if set(first_jobs) != {"one", "two"}:
             raise RuntimeError(f"N did not install the expected jobs: {first_jobs!r}")
+        candidate_id = _attach_local_state(data_dir)
 
         _run(executable, data_dir, f"{base_url}/n1/latest.json", require_bundle=False)
         second_state = json.loads((data_dir / "last-refresh.json").read_text(encoding="utf-8"))
@@ -141,6 +195,7 @@ def run(executable: Path) -> None:
             raise RuntimeError(f"N+1 did not install the new/edited jobs: {second_jobs!r}")
         if second_jobs.get("two", ("", 1))[1] != 0:
             raise RuntimeError(f"N+1 did not close the removed job: {second_jobs!r}")
+        _assert_local_state(data_dir, candidate_id)
         print("Windows installed runtime market-data cycles N -> N+1 passed without reinstall.")
     finally:
         server.shutdown()

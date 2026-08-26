@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+from math import ceil
 from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "validate_release_inputs.py"
@@ -87,7 +89,15 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
     cycle_smoke = (root / "scripts" / "windows_market_cycle_smoke.py").read_text(encoding="utf-8")
     assert '"CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1"' in cycle_smoke
-    assert "--only-uningested --largest-first --limit 100" in daily
+    assert "--due-for-refresh --limit 150" in daily
+    assert 'cron: "17 * * * *"' in daily
+    assert 'INGESTION_REFRESH_INTERVAL_HOURS: "18"' in daily
+    assert 'INGESTION_REFRESH_STALE_SHARE: "0.75"' in daily
+    snapshot = json.loads((root / "config" / "source-registry.snapshot.json").read_text(encoding="utf-8"))
+    recurring_slots = ceil(150 * 0.75)
+    assert snapshot["verified_source_count"] <= 18 * recurring_slots
+    assert 18 + ceil(snapshot["verified_source_count"] / recurring_slots) <= 25
+    assert "worst_case_hours <= max_revisit_hours" in daily
     assert "git read-tree --empty" in daily
     assert "git add data/catalog data/state" in daily
     assert "git add -A" not in daily

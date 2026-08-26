@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 from contextlib import nullcontext
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -31,6 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     jobs.add_argument("--sources", help="Path to source JSON")
     jobs.add_argument("--registry", action="store_true", help="Ingest verified enabled registry sources")
     jobs.add_argument("--only-uningested", action="store_true", help="Resume with verified boards not yet successfully ingested")
+    jobs.add_argument("--due-for-refresh", action="store_true", help="Ingest a fair batch of new and interval-due verified boards")
     jobs.add_argument("--provider", action="append", choices=[provider.value for provider in ATSProvider], help="Limit registry ingestion to one or more providers")
     jobs.add_argument("--limit", type=int, default=None, help="Limit registry sources")
     jobs.add_argument("--largest-first", action="store_true", help="Prioritize verified un-ingested boards with the most recently observed jobs")
@@ -90,6 +92,7 @@ async def _ingest(
     *,
     registry_mode: bool = False,
     only_uningested: bool = False,
+    due_for_refresh: bool = False,
     providers: set[str] | None = None,
     limit: int | None = None,
     largest_first: bool = False,
@@ -100,15 +103,27 @@ async def _ingest(
     if registry_mode:
         with SessionLocal() as session:
             registry = SourceRegistry(session)
-            items = registry.un_ingested_verified_sources(
-                providers=providers,
-                limit=limit,
-                largest_first=largest_first,
-            ) if only_uningested else registry.list_sources(
-                verified_only=True,
-                statuses={"healthy", "degraded", "failing", "empty"},
-                limit=limit,
-            )
+            if only_uningested and due_for_refresh:
+                raise RuntimeError("--only-uningested and --due-for-refresh are mutually exclusive")
+            if due_for_refresh:
+                items = registry.due_for_ingestion(
+                    providers=providers,
+                    limit=limit,
+                    refresh_interval=timedelta(hours=settings.ingestion_refresh_interval_hours),
+                    stale_share=settings.ingestion_refresh_stale_share,
+                )
+            elif only_uningested:
+                items = registry.un_ingested_verified_sources(
+                    providers=providers,
+                    limit=limit,
+                    largest_first=largest_first,
+                )
+            else:
+                items = registry.list_sources(
+                    verified_only=True,
+                    statuses={"healthy", "degraded", "failing", "empty"},
+                    limit=limit,
+                )
             sources = [registry.to_config(item) for item in items if providers is None or item.provider in providers]
     else:
         if not path:
@@ -139,6 +154,8 @@ async def _ingest(
             failures.append(label)
             print(f"{label} fetched=0 stored=0 status=failed error={str(error)[:300]}")
     summary: dict[str, object] = {
+        "selection_mode": "due_for_refresh" if due_for_refresh else "only_uningested" if only_uningested else "all",
+        "refresh_interval_hours": settings.ingestion_refresh_interval_hours if due_for_refresh else None,
         "sources_total": len(results),
         "sources_successful": successful,
         "sources_failed": len(failures),
@@ -208,6 +225,7 @@ def _run(args: argparse.Namespace) -> None:
                 args.sources,
                 registry_mode=args.registry,
                 only_uningested=args.only_uningested,
+                due_for_refresh=args.due_for_refresh,
                 providers=set(args.provider) if args.provider else None,
                 limit=args.limit,
                 largest_first=args.largest_first,

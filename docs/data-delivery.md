@@ -57,14 +57,29 @@ than being presented as a complete market census.
 Scheduled discovery and source health use `SOURCE_STATE_DATABASE_URL` when configured.
 Without that secret they restore, update, sanitize, and republish a durable SQLite
 checkpoint on the `market-data` branch; runner-local state alone is never treated as
-authoritative. Daily ingestion bootstraps the verified registry snapshot and loads
+authoritative. Recurring ingestion bootstraps the verified registry snapshot and loads
 `data/sponsors.csv.gz` before evaluating jobs.
 
 The source-discovery workflow publishes its latest verified registry to
-`market-data/source-registry.latest.json`. Daily ingestion consumes that publication
+`market-data/source-registry.latest.json`. Recurring ingestion consumes that publication
 before falling back to the checked-in bootstrap snapshot, so a newly verified board
 can enter the central job dataset and then reach existing desktop installations
 without a software reinstall.
+
+Central job ingestion runs hourly with a bounded batch of 150. Healthy boards become
+due 18 hours after their last successful ingestion. When new and previously-ingested
+boards are both waiting, at least 75% of each batch (113 slots) is reserved for the
+oldest due refreshes and the remaining slots advance first-ingestion coverage; unused
+capacity flows to the other partition. Retryable degraded/failing boards re-enter only
+after their backoff deadline. Ordering is deterministic by oldest ingestion/discovery
+time and provider identity.
+
+The checked-in production snapshot currently contains 771 verified boards. The
+reserved recurring capacity is therefore 18 × 113 = 2,034 board slots per 18-hour
+window, and draining all 771 simultaneously due boards takes at most seven hourly
+batches. The configured bound is consequently approximately 25 hours from one
+successful fetch to the next under normal healthy-run assumptions. The workflow has a
+capacity assertion so registry growth cannot silently make this statement false.
 
 The publication branch is rewritten as a single orphan snapshot under the shared
 `market-data-publication` concurrency lock. The catalog retains at most 14 compressed
@@ -85,7 +100,9 @@ promoted first and `latest.json` is replaced last, only after validation and dat
 import succeed. A failed update therefore leaves the previous valid cache and local
 candidate state intact.
 
-The update regression covers catalog versions N, N+1, and N+2. N+1 adds a source,
-adds a job, and changes a JD while preserving candidate tracking state. N+2 marks the
-source partial and omits a previously active job; the client retains that job instead
-of deactivating it.
+The update regressions use the same already-ingested source across versions N and
+N+1. They prove new eligible jobs and changed evidence reach an existing client while
+candidate, Saved, Applied, and notes state survive. Separate complete/partial provider
+cycles prove that authoritative removals propagate and partial omissions do not cause
+false deactivation. The packaged Windows runtime also exercises two catalog versions
+through one installed executable without reinstalling.
