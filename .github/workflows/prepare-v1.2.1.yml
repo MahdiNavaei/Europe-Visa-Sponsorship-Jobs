@@ -1,0 +1,89 @@
+name: Prepare v1.2.1 metadata
+
+on:
+  push:
+    branches:
+      - fix/v1.2.1-matching-profile-options
+    paths:
+      - ".github/workflows/prepare-v1.2.1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/v1.2.1-matching-profile-options
+
+      - name: Synchronize v1.2.1 version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = -1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"expected release marker not found in {path}: {old!r}")
+              file.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          replace_exact("pyproject.toml", 'version = "1.2.0"', 'version = "1.2.1"', 1)
+          replace_exact("src/europe_visa_jobs/__init__.py", '__version__ = "1.2.0"', '__version__ = "1.2.1"', 1)
+          replace_exact("apps/web/package.json", '"version": "1.2.0"', '"version": "1.2.1"', 1)
+
+          lock_path = Path("apps/web/package-lock.json")
+          lock = json.loads(lock_path.read_text(encoding="utf-8"))
+          if lock.get("version") != "1.2.0" or lock.get("packages", {}).get("", {}).get("version") != "1.2.0":
+              raise SystemExit("unexpected package-lock root version before v1.2.1 bump")
+          lock["version"] = "1.2.1"
+          lock["packages"][""]["version"] = "1.2.1"
+          lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+
+          replace_exact("packaging/windows/installer.iss", '#define AppVersion "1.2.0"', '#define AppVersion "1.2.1"', 1)
+          replace_exact("tests/test_release_inputs.py", '== "1.2.0"', '== "1.2.1"')
+          replace_exact(
+              "README.md",
+              "The current downloadable release is [v1.2.0](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.2.0).",
+              "The current downloadable release is [v1.2.1](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.2.1).",
+              1,
+          )
+
+          changelog_path = Path("CHANGELOG.md")
+          changelog = changelog_path.read_text(encoding="utf-8")
+          if "## 1.2.1 — 2026-08-27" in changelog:
+              raise SystemExit("v1.2.1 changelog entry already exists")
+          entry = """## 1.2.1 — 2026-08-27
+
+- Fix the recommendation-score scale bug that underweighted positive visa/sponsorship
+  evidence by treating a normalized 0..1 component as if it were already 0..100.
+- Revisit already-ingested ATS sources automatically with the fair recurring freshness
+  scheduler so new/changed/removed jobs can reach existing desktop installations.
+- Add Software Engineering and additional common engineering role choices, and improve
+  broad-to-specific software role matching without weakening non-technical role guards.
+- Expand the deterministic skill ontology and replace the flat onboarding skill picker
+  with searchable, grouped, role-prioritized choices while preserving existing profiles.
+- Add user-feedback regressions for score normalization, role taxonomy, ontology coverage,
+  recurring freshness behavior, and installed-client state preservation.
+
+"""
+          changelog_path.write_text(changelog.replace("# Changelog\n\n", "# Changelog\n\n" + entry, 1), encoding="utf-8")
+          PY
+
+      - name: Remove one-time preparation workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/prepare-v1.2.1.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml src/europe_visa_jobs/__init__.py apps/web/package.json apps/web/package-lock.json packaging/windows/installer.iss tests/test_release_inputs.py README.md CHANGELOG.md .github/workflows/prepare-v1.2.1.yml
+          git diff --cached --check
+          git commit -m "release: synchronize v1.2.1 metadata"
+          git push origin HEAD:fix/v1.2.1-matching-profile-options
