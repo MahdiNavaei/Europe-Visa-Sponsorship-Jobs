@@ -2,7 +2,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, MapPin, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, MapPin, Plus, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
@@ -18,6 +18,13 @@ import { formatCountry } from "@/lib/utils/format";
 import { candidateSchema, type CandidateFormValues } from "@/lib/validators/candidate";
 
 const roles = [
+  "Software Engineering",
+  "Backend Engineering",
+  "Frontend Engineering",
+  "Full Stack Engineering",
+  "Mobile Engineering",
+  "QA / Test Automation",
+  "Security Engineering",
   "Machine Learning Engineer",
   "Senior Machine Learning Engineer",
   "AI Engineer",
@@ -29,24 +36,93 @@ const roles = [
   "Generative AI Engineer",
   "LLM Engineer",
   "AI / Machine Learning",
-  "Backend Engineering",
-  "Frontend Engineering",
   "Data Science",
   "Data Engineering",
   "DevOps / Cloud",
 ];
-const skills = [
-  "Python", "Machine Learning", "Deep Learning", "PyTorch", "TensorFlow", "scikit-learn",
-  "SQL", "Docker", "Kubernetes", "AWS", "MLOps", "Natural Language Processing", "LLM", "RAG",
-  "LangChain", "PostgreSQL", "TypeScript", "React", "FastAPI",
+
+type SkillGroup = {
+  key: string;
+  label: string;
+  labelFa: string;
+  skills: string[];
+};
+
+const skillGroups: SkillGroup[] = [
+  {
+    key: "programming",
+    label: "Programming languages",
+    labelFa: "زبان های برنامه نویسی",
+    skills: ["Python", "Java", "JavaScript", "TypeScript", "Go", "Rust", "C++", "C#", "Kotlin", "Swift", "PHP", "Ruby", "Scala", "Bash"],
+  },
+  {
+    key: "backend",
+    label: "Backend",
+    labelFa: "بک اند",
+    skills: ["Node.js", "Express.js", "NestJS", "Django", "FastAPI", "Flask", "Spring", ".NET", "ASP.NET Core", "Laravel", "Ruby on Rails", "GraphQL", "gRPC"],
+  },
+  {
+    key: "frontend",
+    label: "Frontend",
+    labelFa: "فرانت اند",
+    skills: ["React", "Next.js", "Vue.js", "Angular", "Svelte", "Redux", "Tailwind CSS"],
+  },
+  {
+    key: "mobile",
+    label: "Mobile",
+    labelFa: "موبایل",
+    skills: ["Android", "iOS", "Flutter", "React Native"],
+  },
+  {
+    key: "data",
+    label: "Data & databases",
+    labelFa: "داده و دیتابیس",
+    skills: ["SQL", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Snowflake", "BigQuery", "Databricks", "Kafka", "RabbitMQ", "Spark", "Airflow", "dbt", "Pandas", "NumPy"],
+  },
+  {
+    key: "machine_learning",
+    label: "AI / Machine Learning",
+    labelFa: "هوش مصنوعی / یادگیری ماشین",
+    skills: ["Machine Learning", "Deep Learning", "PyTorch", "TensorFlow", "scikit-learn", "LLM", "RAG", "Natural Language Processing", "Computer Vision", "Hugging Face", "Transformers", "LangChain", "LangGraph", "MLflow", "MLOps"],
+  },
+  {
+    key: "cloud",
+    label: "Cloud / DevOps",
+    labelFa: "کلاد / DevOps",
+    skills: ["Docker", "Kubernetes", "Helm", "AWS", "Azure", "Google Cloud", "Terraform", "Ansible", "CI/CD", "GitHub Actions", "Jenkins", "Argo CD", "Linux", "Git"],
+  },
+  {
+    key: "testing",
+    label: "Testing",
+    labelFa: "تست",
+    skills: ["pytest", "Jest", "Playwright", "Cypress", "Selenium"],
+  },
+  {
+    key: "observability",
+    label: "Observability",
+    labelFa: "مانیتورینگ و مشاهده پذیری",
+    skills: ["Prometheus", "Grafana", "OpenTelemetry", "Datadog"],
+  },
+  {
+    key: "security",
+    label: "Security",
+    labelFa: "امنیت",
+    skills: ["OAuth", "OpenID Connect"],
+  },
 ];
+
 const countries = ["Germany", "Netherlands", "Sweden", "Denmark", "Finland", "Ireland", "United Kingdom"];
 const steps = ["role", "skills", "experience", "countries", "visa", "remote"] as const;
 
 const roleLabelsFa: Record<string, string> = {
+  "Software Engineering": "مهندسی نرم افزار",
+  "Backend Engineering": "مهندسی بک اند",
+  "Frontend Engineering": "مهندسی فرانت اند",
+  "Full Stack Engineering": "مهندسی فول استک",
+  "Mobile Engineering": "مهندسی موبایل",
+  "QA / Test Automation": "تست و اتوماسیون QA",
+  "Security Engineering": "مهندسی امنیت",
   "AI / Machine Learning": "هوش مصنوعی / یادگیری ماشین",
-  "Backend Engineering": "مهندسی بک‌اند",
-  "Frontend Engineering": "مهندسی فرانت‌اند",
   "Data Science": "علم داده",
   "Data Engineering": "مهندسی داده",
   "DevOps / Cloud": "DevOps / کلاد",
@@ -65,6 +141,25 @@ const defaultValues: CandidateFormValues = {
   excluded_locations: [],
 };
 
+function priorityKeys(selectedRoles: string[]) {
+  const text = selectedRoles.join(" ").toLowerCase();
+  const keys: string[] = [];
+  const add = (...values: string[]) => values.forEach((value) => !keys.includes(value) && keys.push(value));
+
+  if (/machine learning|\bai\b|data scientist|applied scientist|llm|generative/.test(text)) add("machine_learning", "data", "programming", "cloud");
+  if (/data engineering/.test(text)) add("data", "programming", "cloud", "backend");
+  if (/backend/.test(text)) add("backend", "programming", "data", "cloud", "testing");
+  if (/frontend/.test(text)) add("frontend", "programming", "testing");
+  if (/full stack/.test(text)) add("backend", "frontend", "programming", "data", "testing");
+  if (/mobile/.test(text)) add("mobile", "programming", "testing");
+  if (/software engineering/.test(text)) add("programming", "backend", "frontend", "data", "cloud", "testing");
+  if (/devops|cloud|mlops|platform/.test(text)) add("cloud", "observability", "programming", "data");
+  if (/security/.test(text)) add("security", "cloud", "programming", "observability");
+  if (/qa|test automation/.test(text)) add("testing", "programming", "frontend", "backend");
+
+  return keys;
+}
+
 export function OnboardingPage() {
   const locale = useLocale();
   const t = useTranslations("onboarding");
@@ -77,6 +172,7 @@ export function OnboardingPage() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [skillQuery, setSkillQuery] = useState("");
   const createMutation = useCreateCandidate();
   const updateMutation = useUpdateCandidate();
   const mutationPending = createMutation.isPending || updateMutation.isPending;
@@ -120,6 +216,25 @@ export function OnboardingPage() {
     () => (value: string) => (locale === "fa" ? roleLabelsFa[value] ?? value : value),
     [locale],
   );
+
+  const visibleSkillGroups = useMemo(() => {
+    const priorities = priorityKeys(selectedRoles);
+    const priorityIndex = new Map(priorities.map((key, index) => [key, index]));
+    const query = skillQuery.trim().toLowerCase();
+    return skillGroups
+      .map((group) => ({
+        ...group,
+        skills: query ? group.skills.filter((skill) => skill.toLowerCase().includes(query)) : group.skills,
+      }))
+      .filter((group) => group.skills.length > 0)
+      .sort((a, b) => (priorityIndex.get(a.key) ?? 100) - (priorityIndex.get(b.key) ?? 100));
+  }, [selectedRoles, skillQuery]);
+
+  const knownSkillNames = useMemo(
+    () => new Set(skillGroups.flatMap((group) => group.skills).map((skill) => skill.toLowerCase())),
+    [],
+  );
+  const legacySelectedSkills = selectedSkills.filter((skill) => !knownSkillNames.has(skill.toLowerCase()));
 
   const toggle = (field: "target_roles" | "skills" | "preferred_countries", value: string) => {
     const current = field === "target_roles" ? selectedRoles : field === "skills" ? selectedSkills : selectedCountries;
@@ -207,13 +322,49 @@ export function OnboardingPage() {
                 {step === 1 && (
                   <StepBlock eyebrow={t("stepLabel")} title={t("skills")}>
                     <p className="mb-5 text-sm text-[var(--muted)]">{t("skillsHelp")}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {skills.map((skill) => (
-                        <Choice key={skill} compact disabled={!hydrated} selected={selectedSkills.includes(skill)} onClick={() => toggle("skills", skill)}>
-                          {skill}
-                        </Choice>
+                    <label className="relative mb-6 block">
+                      <Search size={16} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+                      <Input
+                        value={skillQuery}
+                        onChange={(event) => setSkillQuery(event.target.value)}
+                        className="ps-10"
+                        placeholder={locale === "fa" ? "جستجوی مهارت..." : "Search skills..."}
+                        disabled={!hydrated}
+                      />
+                    </label>
+                    {legacySelectedSkills.length > 0 && !skillQuery && (
+                      <div className="mb-6">
+                        <p className="mb-3 text-xs font-black uppercase tracking-[.12em] text-[var(--muted)]">
+                          {locale === "fa" ? "مهارت های قبلی پروفایل" : "Existing profile skills"}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {legacySelectedSkills.map((skill) => (
+                            <Choice key={skill} compact disabled={!hydrated} selected onClick={() => toggle("skills", skill)}>{skill}</Choice>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-7">
+                      {visibleSkillGroups.map((group) => (
+                        <div key={group.key}>
+                          <p className="mb-3 text-xs font-black uppercase tracking-[.12em] text-[var(--muted)]">
+                            {locale === "fa" ? group.labelFa : group.label}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {group.skills.map((skill) => (
+                              <Choice key={skill} compact disabled={!hydrated} selected={selectedSkills.includes(skill)} onClick={() => toggle("skills", skill)}>
+                                {skill}
+                              </Choice>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
+                    {visibleSkillGroups.length === 0 && (
+                      <p className="py-8 text-center text-sm text-[var(--muted)]">
+                        {locale === "fa" ? "مهارتی با این عبارت پیدا نشد." : "No skill matches this search."}
+                      </p>
+                    )}
                   </StepBlock>
                 )}
 

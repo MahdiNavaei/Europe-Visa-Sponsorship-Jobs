@@ -180,11 +180,33 @@ class CandidateMatcher:
         target_families = [classify_role(role) for role in target_roles]
         if family in target_families and family is not JobFamily.OTHER:
             return 1.0
+
+        software_specializations = {
+            JobFamily.BACKEND,
+            JobFamily.FRONTEND,
+            JobFamily.FULLSTACK,
+            JobFamily.MOBILE,
+            JobFamily.QA_AUTOMATION,
+            JobFamily.SECURITY_ENGINEERING,
+        }
+        # "Software Engineering" is intentionally a broad target role. A user
+        # choosing it should still strongly match a concrete backend/frontend/
+        # full-stack/mobile vacancy instead of being treated as unrelated.
+        if JobFamily.SOFTWARE_ENGINEERING in target_families and family in software_specializations:
+            return 0.9
+        if family is JobFamily.SOFTWARE_ENGINEERING and any(
+            target in software_specializations for target in target_families
+        ):
+            return 0.85
+
         related_families = {
             JobFamily.AI_ML: {JobFamily.DATA_SCIENCE, JobFamily.MLOPS},
             JobFamily.DATA_SCIENCE: {JobFamily.AI_ML, JobFamily.MLOPS},
             JobFamily.MLOPS: {JobFamily.AI_ML, JobFamily.DATA_SCIENCE, JobFamily.DEVOPS_CLOUD},
-            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS},
+            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS, JobFamily.BACKEND},
+            JobFamily.BACKEND: {JobFamily.FULLSTACK, JobFamily.DEVOPS_CLOUD},
+            JobFamily.FRONTEND: {JobFamily.FULLSTACK},
+            JobFamily.FULLSTACK: {JobFamily.BACKEND, JobFamily.FRONTEND},
         }
         if any(family in related_families.get(target, set()) for target in target_families):
             return 0.75
