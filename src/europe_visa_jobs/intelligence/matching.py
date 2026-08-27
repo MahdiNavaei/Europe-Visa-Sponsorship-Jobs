@@ -45,6 +45,21 @@ _LEVEL_ORDER = {
     SeniorityLevel.DIRECTOR: 6,
 }
 
+_ML_SPECIALIST_SKILLS = {
+    "Deep Learning",
+    "PyTorch",
+    "TensorFlow",
+    "scikit-learn",
+    "Natural Language Processing",
+    "Computer Vision",
+    "LLM",
+    "RAG",
+    "Hugging Face",
+    "Transformers",
+    "MLflow",
+    "MLOps",
+}
+
 
 class CandidateMatcher:
     def __init__(self, ontology: SkillOntology | None = None, company_scorer: CompanyIntelligenceScorer | None = None) -> None:
@@ -58,7 +73,16 @@ class CandidateMatcher:
         if job.required_skills or job.preferred_skills or job.min_experience_years is not None or job.seniority:
             profile = JobProfile(list(job.required_skills), list(job.preferred_skills), job.min_experience_years, SeniorityLevel(job.seniority) if job.seniority else profile.seniority, profile.job_family)
 
-        candidate_skills = {skill.casefold(): skill for skill in self.ontology.normalize_skills(candidate.skills)}
+        normalized_candidate_skills = self.ontology.normalize_skills(candidate.skills)
+        # A concrete ML framework/domain is stronger evidence than the broad
+        # "Machine Learning" label. Treat specialist selections as satisfying
+        # that broad requirement without pretending the reverse is true.
+        if (
+            "Machine Learning" not in normalized_candidate_skills
+            and any(skill in _ML_SPECIALIST_SKILLS for skill in normalized_candidate_skills)
+        ):
+            normalized_candidate_skills.append("Machine Learning")
+        candidate_skills = {skill.casefold(): skill for skill in normalized_candidate_skills}
         required = self.ontology.normalize_skills(profile.required_skills)
         preferred = self.ontology.normalize_skills(profile.preferred_skills)
         matched_required = [skill for skill in required if skill.casefold() in candidate_skills]

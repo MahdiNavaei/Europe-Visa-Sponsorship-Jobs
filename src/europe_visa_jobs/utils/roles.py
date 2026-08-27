@@ -57,6 +57,11 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
 
 def classify_role(title: str, department: str | None = None, description: str | None = None) -> JobFamily:
     lowered = f"{title} {department or ''}".casefold()
+    # Explicit non-technical role shapes win before broad engineering/platform
+    # phrases are evaluated. This prevents titles such as "Service Designer -
+    # Platform Engineering" from becoming DevOps jobs.
+    if re.search(r"\b(?:product|program|programme|project) manager\b|\bservice designer\b", lowered):
+        return JobFamily.OTHER
     # Generic "developer" is not enough evidence for a technical vacancy when
     # it is explicitly a commercial/non-software role.
     if re.search(r"\b(?:business|sales|account|real estate)\s+developer\b", lowered):
