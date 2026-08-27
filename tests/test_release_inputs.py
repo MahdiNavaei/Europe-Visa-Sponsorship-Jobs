@@ -19,11 +19,11 @@ _SIGNING_SPEC.loader.exec_module(windows_signing_mode)
 
 
 def test_release_version_sources_match():
-    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.0"
+    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.1"
 
 
 def test_release_validation_accepts_the_real_snapshot():
-    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.0"
+    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.1"
 
 
 def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
@@ -35,7 +35,7 @@ def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
         return {}
 
     monkeypatch.setattr(validate_release_inputs, "validate_registry", fake_validate_registry)
-    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.0"
+    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.1"
     assert called["kwargs"]["require_input_hashes"] is True
 
 

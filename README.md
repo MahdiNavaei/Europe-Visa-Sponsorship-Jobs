@@ -39,7 +39,7 @@ are surfaced rather than hidden.
 
 ## Install on Windows
 
-The current downloadable release is [v1.2.0](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.2.0).
+The current downloadable release is [v1.2.1](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases/tag/v1.2.1).
 Download the setup executable or portable ZIP from
 [Releases](https://github.com/MahdiNavaei/Europe-Visa-Sponsorship-Jobs/releases),
 verify the published SHA-256 checksum, then install and launch—Python, Node.js, Docker,
