@@ -45,6 +45,21 @@ _LEVEL_ORDER = {
     SeniorityLevel.DIRECTOR: 6,
 }
 
+_ML_SPECIALIST_SKILLS = {
+    "Deep Learning",
+    "PyTorch",
+    "TensorFlow",
+    "scikit-learn",
+    "Natural Language Processing",
+    "Computer Vision",
+    "LLM",
+    "RAG",
+    "Hugging Face",
+    "Transformers",
+    "MLflow",
+    "MLOps",
+}
+
 
 class CandidateMatcher:
     def __init__(self, ontology: SkillOntology | None = None, company_scorer: CompanyIntelligenceScorer | None = None) -> None:
@@ -58,7 +73,16 @@ class CandidateMatcher:
         if job.required_skills or job.preferred_skills or job.min_experience_years is not None or job.seniority:
             profile = JobProfile(list(job.required_skills), list(job.preferred_skills), job.min_experience_years, SeniorityLevel(job.seniority) if job.seniority else profile.seniority, profile.job_family)
 
-        candidate_skills = {skill.casefold(): skill for skill in self.ontology.normalize_skills(candidate.skills)}
+        normalized_candidate_skills = self.ontology.normalize_skills(candidate.skills)
+        # A concrete ML framework/domain is stronger evidence than the broad
+        # "Machine Learning" label. Treat specialist selections as satisfying
+        # that broad requirement without pretending the reverse is true.
+        if (
+            "Machine Learning" not in normalized_candidate_skills
+            and any(skill in _ML_SPECIALIST_SKILLS for skill in normalized_candidate_skills)
+        ):
+            normalized_candidate_skills.append("Machine Learning")
+        candidate_skills = {skill.casefold(): skill for skill in normalized_candidate_skills}
         required = self.ontology.normalize_skills(profile.required_skills)
         preferred = self.ontology.normalize_skills(profile.preferred_skills)
         matched_required = [skill for skill in required if skill.casefold() in candidate_skills]
@@ -180,11 +204,33 @@ class CandidateMatcher:
         target_families = [classify_role(role) for role in target_roles]
         if family in target_families and family is not JobFamily.OTHER:
             return 1.0
+
+        software_specializations = {
+            JobFamily.BACKEND,
+            JobFamily.FRONTEND,
+            JobFamily.FULLSTACK,
+            JobFamily.MOBILE,
+            JobFamily.QA_AUTOMATION,
+            JobFamily.SECURITY_ENGINEERING,
+        }
+        # "Software Engineering" is intentionally a broad target role. A user
+        # choosing it should still strongly match a concrete backend/frontend/
+        # full-stack/mobile vacancy instead of being treated as unrelated.
+        if JobFamily.SOFTWARE_ENGINEERING in target_families and family in software_specializations:
+            return 0.9
+        if family is JobFamily.SOFTWARE_ENGINEERING and any(
+            target in software_specializations for target in target_families
+        ):
+            return 0.85
+
         related_families = {
             JobFamily.AI_ML: {JobFamily.DATA_SCIENCE, JobFamily.MLOPS},
             JobFamily.DATA_SCIENCE: {JobFamily.AI_ML, JobFamily.MLOPS},
             JobFamily.MLOPS: {JobFamily.AI_ML, JobFamily.DATA_SCIENCE, JobFamily.DEVOPS_CLOUD},
-            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS},
+            JobFamily.DEVOPS_CLOUD: {JobFamily.MLOPS, JobFamily.BACKEND},
+            JobFamily.BACKEND: {JobFamily.FULLSTACK, JobFamily.DEVOPS_CLOUD},
+            JobFamily.FRONTEND: {JobFamily.FULLSTACK},
+            JobFamily.FULLSTACK: {JobFamily.BACKEND, JobFamily.FRONTEND},
         }
         if any(family in related_families.get(target, set()) for target in target_families):
             return 0.75

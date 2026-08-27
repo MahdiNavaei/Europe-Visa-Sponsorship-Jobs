@@ -27,24 +27,43 @@ ROLE_RULES: tuple[tuple[JobFamily, tuple[str, ...]], ...] = (
     ),
     # A bare "data platform" phrase also appears in non-technical product and
     # programme titles. Require an explicit technical role after the phrase.
-    (JobFamily.DATA_ENGINEERING, (r"data engineer", r"analytics engineer", r"data platform\b.*\b(?:engineer|architect|developer)")),
+    (
+        JobFamily.DATA_ENGINEERING,
+        (
+            r"data engineer(?:ing)?",
+            r"analytics engineer(?:ing)?",
+            r"data platform\b.*\b(?:engineer|engineering|architect|developer)",
+        ),
+    ),
     (JobFamily.DATA_SCIENCE, (r"data scientist", r"data science", r"decision scientist", r"decision science")),
-    (JobFamily.FRONTEND, (r"front[ -]?end", r"frontend", r"react developer", r"ui engineer")),
+    (JobFamily.FRONTEND, (r"front[ -]?end", r"frontend", r"react developer", r"ui engineer(?:ing)?")),
     (JobFamily.BACKEND, (r"back[ -]?end", r"backend", r"server[- ]side")),
     (JobFamily.FULLSTACK, (r"full[ -]?stack", r"fullstack")),
-    (JobFamily.MOBILE, (r"mobile engineer", r"android", r"ios engineer", r"flutter")),
-    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer", r"\bplatform engineer\b", r"\binfrastructure engineer\b")),
-    (JobFamily.QA_AUTOMATION, (r"qa automation", r"test automation", r"quality engineer", r"software test")),
-    (JobFamily.SECURITY_ENGINEERING, (r"security engineer", r"application security", r"product security", r"cloud security")),
-    (JobFamily.SOFTWARE_ENGINEERING, (r"software engineer", r"software developer", r"developer")),
+    (JobFamily.MOBILE, (r"mobile engineer(?:ing)?", r"android", r"ios engineer(?:ing)?", r"flutter")),
+    (JobFamily.DEVOPS_CLOUD, (r"devops", r"site reliability", r"\bsre\b", r"cloud engineer(?:ing)?", r"\bplatform engineer(?:ing)?\b", r"\binfrastructure engineer(?:ing)?\b")),
+    (JobFamily.QA_AUTOMATION, (r"qa automation", r"test automation", r"quality engineer(?:ing)?", r"software test")),
+    (JobFamily.SECURITY_ENGINEERING, (r"security engineer(?:ing)?", r"application security", r"product security", r"cloud security")),
+    (
+        JobFamily.SOFTWARE_ENGINEERING,
+        (
+            r"software engineer(?:ing)?",
+            r"software developer",
+            r"software development",
+            r"\bdeveloper\b",
+        ),
+    ),
 )
 
 
 def classify_role(title: str, department: str | None = None, description: str | None = None) -> JobFamily:
     lowered = f"{title} {department or ''}".casefold()
-    # Generic "developer" is not enough evidence for a technical vacancy.
-    # Keep common commercial roles auditable as nontechnical instead of allowing
-    # a substring match to manufacture software jobs.
+    # Explicit non-technical role shapes win before broad engineering/platform
+    # phrases are evaluated. This prevents titles such as "Service Designer -
+    # Platform Engineering" from becoming DevOps jobs.
+    if re.search(r"\b(?:product|program|programme|project) manager\b|\bservice designer\b", lowered):
+        return JobFamily.OTHER
+    # Generic "developer" is not enough evidence for a technical vacancy when
+    # it is explicitly a commercial/non-software role.
     if re.search(r"\b(?:business|sales|account|real estate)\s+developer\b", lowered):
         return JobFamily.OTHER
     if re.search(r"\b(?:sales|solutions)\s+engineer\b", lowered) and not re.search(
@@ -62,13 +81,13 @@ def classify_role(title: str, department: str | None = None, description: str | 
         r"\b(?:platform|infrastructure|systems?|cloud|database|network|security|software|data)\b",
         title_lower,
     ) and re.search(
-        r"\b(?:specialist|administrator|architect|consultant|engineer|developer)\b",
+        r"\b(?:specialist|administrator|architect|consultant|engineer|engineering|developer)\b",
         title_lower,
     )
     technical_department_title = re.search(
         r"\b(?:engineering|technology|infrastructure|it|security|data)\b",
         department_lower,
-    ) and re.search(r"\b(?:specialist|administrator|architect|engineer|developer)\b", title_lower)
+    ) and re.search(r"\b(?:specialist|administrator|architect|engineer|engineering|developer)\b", title_lower)
     if (
         description
         and (technical_title or technical_department_title)

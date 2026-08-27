@@ -91,8 +91,11 @@ class RankingEngine:
 
     def score(self, candidate: Candidate, job: Job) -> JobRecommendation:
         match = self.matcher.match(candidate, job)
+        # MatchResult intentionally exposes visa/country/role as normalized 0..1
+        # values while skill/experience/company are already 0..100. Normalize
+        # every component onto the same 0..100 scale before applying weights.
         total = (
-            self.config.visa * match.visa_score
+            self.config.visa * (match.visa_score * 100)
             + self.config.skill * match.skill_score
             + self.config.experience * match.experience_score
             + self.config.country * (match.country_score * 100)

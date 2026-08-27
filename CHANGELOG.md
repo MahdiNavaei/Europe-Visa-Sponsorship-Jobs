@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1 — 2026-08-27
+
+- Fix the recommendation-score scale bug that underweighted positive visa/sponsorship
+  evidence by treating a normalized 0..1 component as if it were already 0..100.
+- Revisit already-ingested ATS sources automatically with the fair recurring freshness
+  scheduler so new/changed/removed jobs can reach existing desktop installations.
+- Add Software Engineering and additional common engineering role choices, and improve
+  broad-to-specific software role matching without weakening non-technical role guards.
+- Expand the deterministic skill ontology and replace the flat onboarding skill picker
+  with searchable, grouped, role-prioritized choices while preserving existing profiles.
+- Add user-feedback regressions for score normalization, role taxonomy, ontology coverage,
+  recurring freshness behavior, and installed-client state preservation.
+
 ## 1.2.0 — 2026-08-26
 
 - Enforce the European technical-market scope in catalog publication and import so
