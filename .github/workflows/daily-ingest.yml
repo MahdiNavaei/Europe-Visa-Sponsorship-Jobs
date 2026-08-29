@@ -2,9 +2,9 @@ name: Recurring catalog ingestion
 
 on:
   schedule:
-    # An hourly bounded run gives the current 771-source verified registry
-    # enough reserved recurring-refresh capacity to revisit healthy boards in
-    # approximately 25 hours, even while new-board coverage is also pending.
+    # Hourly bounded runs dynamically scale the refresh batch with the verified
+    # registry while preserving the documented 25-hour revisit target whenever
+    # it can be met inside the runner-safe batch cap.
     - cron: "17 * * * *"
   workflow_dispatch:
 
@@ -26,6 +26,9 @@ jobs:
       PYTHONPATH: src:.
       INGESTION_REFRESH_INTERVAL_HOURS: "18"
       INGESTION_REFRESH_STALE_SHARE: "0.75"
+      INGESTION_MIN_BATCH_SIZE: "150"
+      INGESTION_MAX_BATCH_SIZE: "400"
+      INGESTION_MAX_REVISIT_HOURS: "25"
 
     steps:
       - name: Checkout
@@ -72,31 +75,58 @@ jobs:
             echo "Using the checked-in bootstrap snapshot because no publication exists yet"
           fi
 
-      - name: Validate authoritative source snapshot
+      - name: Validate authoritative source snapshot and plan refresh batch
         run: |
           python - <<'PY'
+          import os
           from math import ceil
+
           from europe_visa_jobs.ingestion.sources import load_sources
+
           sources = load_sources("build/source-registry.latest.json", minimum_snapshot_sources=500)
           assert all("example" not in source.slug.lower() for source in sources)
-          batch_size = 150
-          refresh_interval_hours = 18
-          max_revisit_hours = 25
-          recurring_slots = ceil(batch_size * 0.75)
-          recurring_capacity = refresh_interval_hours * recurring_slots
-          assert len(sources) <= recurring_capacity, (
-              f"verified registry has {len(sources)} boards but the configured "
-              f"18-hour fairness window reserves only {recurring_capacity} refresh slots"
+
+          source_count = len(sources)
+          refresh_interval_hours = int(os.environ["INGESTION_REFRESH_INTERVAL_HOURS"])
+          stale_share = float(os.environ["INGESTION_REFRESH_STALE_SHARE"])
+          min_batch_size = int(os.environ["INGESTION_MIN_BATCH_SIZE"])
+          max_batch_size = int(os.environ["INGESTION_MAX_BATCH_SIZE"])
+          max_revisit_hours = int(os.environ["INGESTION_MAX_REVISIT_HOURS"])
+
+          assert 0 < stale_share < 1, "INGESTION_REFRESH_STALE_SHARE must be between zero and one"
+          assert 0 < min_batch_size <= max_batch_size, "invalid ingestion batch bounds"
+          queue_window_hours = max_revisit_hours - refresh_interval_hours
+          assert queue_window_hours > 0, (
+              "INGESTION_MAX_REVISIT_HOURS must exceed INGESTION_REFRESH_INTERVAL_HOURS"
           )
-          worst_case_hours = refresh_interval_hours + ceil(len(sources) / recurring_slots)
-          assert worst_case_hours <= max_revisit_hours, (
-              f"verified registry growth makes the documented {max_revisit_hours}-hour "
-              f"revisit bound impossible: {len(sources)} boards require approximately "
-              f"{worst_case_hours} hours with {recurring_slots} reserved slots/run"
+
+          # A board can first become due after refresh_interval_hours. The
+          # remaining queue window is therefore the number of hourly runs in
+          # which all recurring boards must fit to preserve the revisit bound.
+          required_recurring_slots = ceil(source_count / queue_window_hours)
+          required_batch_size = max(
+              min_batch_size,
+              ceil(required_recurring_slots / stale_share),
           )
+          batch_size = min(required_batch_size, max_batch_size)
+          recurring_slots = ceil(batch_size * stale_share)
+          worst_case_hours = refresh_interval_hours + ceil(source_count / recurring_slots)
+
+          if required_batch_size > max_batch_size:
+              print(
+                  "::warning::Verified registry growth exceeds the runner-safe batch cap; "
+                  f"{source_count} boards need batch={required_batch_size} for the "
+                  f"{max_revisit_hours}h target, but batch={max_batch_size} will be used. "
+                  f"Estimated revisit bound is {worst_case_hours}h. Ingestion will continue "
+                  "instead of freezing the catalog."
+              )
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"INGESTION_BATCH_SIZE={batch_size}\n")
+
           print(
-              f"validated {len(sources)} live ATS sources; recurring capacity="
-              f"{recurring_capacity} boards/18h, bounded revisit≈{worst_case_hours}h"
+              f"validated {source_count} live ATS sources; planned batch={batch_size}, "
+              f"recurring slots/run={recurring_slots}, bounded revisit≈{worst_case_hours}h"
           )
           PY
 
@@ -112,7 +142,7 @@ jobs:
           evj-ingest sources discover --mode recent --method manual --limit 100
 
       - name: Ingest a fair durable refresh batch
-        run: evj-ingest jobs --registry --due-for-refresh --limit 150 --allow-partial --summary-file build/ingestion-summary.json
+        run: evj-ingest jobs --registry --due-for-refresh --limit "$INGESTION_BATCH_SIZE" --allow-partial --summary-file build/ingestion-summary.json
 
       - name: Report persisted ingestion result
         run: |

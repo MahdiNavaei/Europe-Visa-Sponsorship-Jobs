@@ -69,6 +69,35 @@ def test_windows_workflow_surfaces_signing_mode_and_keeps_strict_signing():
     assert "WINDOWS_RELEASE_MODE: ${{ needs.build-windows.outputs.release_mode }}" in windows
 
 
+def _planned_ingestion_batch(
+    source_count: int,
+    *,
+    refresh_interval_hours: int = 18,
+    stale_share: float = 0.75,
+    min_batch_size: int = 150,
+    max_batch_size: int = 400,
+    max_revisit_hours: int = 25,
+) -> tuple[int, int, int]:
+    queue_window_hours = max_revisit_hours - refresh_interval_hours
+    required_recurring_slots = ceil(source_count / queue_window_hours)
+    required_batch_size = max(min_batch_size, ceil(required_recurring_slots / stale_share))
+    batch_size = min(required_batch_size, max_batch_size)
+    recurring_slots = ceil(batch_size * stale_share)
+    worst_case_hours = refresh_interval_hours + ceil(source_count / recurring_slots)
+    return batch_size, required_batch_size, worst_case_hours
+
+
+def test_scheduled_ingestion_capacity_regression_for_registry_growth():
+    # The live durable registry reached 1,361 verified boards and used to make
+    # the fixed 150-board workflow fail before ingesting anything. Keep that
+    # scale as a regression case and verify the dynamic planner preserves the
+    # documented 25-hour revisit target without exceeding the runner-safe cap.
+    batch_size, required_batch_size, worst_case_hours = _planned_ingestion_batch(1361)
+    assert required_batch_size == 260
+    assert batch_size == 260
+    assert worst_case_hours <= 25
+
+
 def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     root = Path(__file__).resolve().parents[1]
     daily = (root / ".github" / "workflows" / "daily-ingest.yml").read_text(encoding="utf-8")
@@ -89,15 +118,25 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
     cycle_smoke = (root / "scripts" / "windows_market_cycle_smoke.py").read_text(encoding="utf-8")
     assert '"CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1"' in cycle_smoke
-    assert "--due-for-refresh --limit 150" in daily
+    assert '--due-for-refresh --limit "$INGESTION_BATCH_SIZE"' in daily
     assert 'cron: "17 * * * *"' in daily
     assert 'INGESTION_REFRESH_INTERVAL_HOURS: "18"' in daily
     assert 'INGESTION_REFRESH_STALE_SHARE: "0.75"' in daily
+    assert 'INGESTION_MIN_BATCH_SIZE: "150"' in daily
+    assert 'INGESTION_MAX_BATCH_SIZE: "400"' in daily
+    assert 'INGESTION_MAX_REVISIT_HOURS: "25"' in daily
+    assert "required_batch_size" in daily
+    assert "INGESTION_BATCH_SIZE=" in daily
+    assert "Ingestion will continue" in daily
+
     snapshot = json.loads((root / "config" / "source-registry.snapshot.json").read_text(encoding="utf-8"))
-    recurring_slots = ceil(150 * 0.75)
-    assert snapshot["verified_source_count"] <= 18 * recurring_slots
-    assert 18 + ceil(snapshot["verified_source_count"] / recurring_slots) <= 25
-    assert "worst_case_hours <= max_revisit_hours" in daily
+    batch_size, required_batch_size, worst_case_hours = _planned_ingestion_batch(
+        snapshot["verified_source_count"]
+    )
+    assert batch_size <= 400
+    assert required_batch_size <= 400
+    assert worst_case_hours <= 25
+
     assert "git read-tree --empty" in daily
     assert "git add data/catalog data/state" in daily
     assert "git add -A" not in daily
