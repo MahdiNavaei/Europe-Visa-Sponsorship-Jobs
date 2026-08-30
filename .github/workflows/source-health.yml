@@ -119,6 +119,10 @@ jobs:
 
           summary = json.loads(Path("retry-summary.json").read_text())
           failed = int(summary.get("sources_failed", 0))
+          if failed and not summary.get("partial_success", False):
+              raise SystemExit(
+                  f"all {failed} due source retries failed; this looks systemic rather than normal source degradation"
+              )
           if failed:
               sources = [str(item) for item in summary.get("failed_sources", [])]
               preview = ", ".join(sources[:20])

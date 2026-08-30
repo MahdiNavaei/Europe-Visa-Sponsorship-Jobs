@@ -143,12 +143,13 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
 
     # Source-level provider outages are expected operational degradation, not
-    # GitHub Actions infrastructure failures. The health workflow must persist
-    # evidence and warn without deliberately turning a completed retry batch red.
+    # GitHub Actions infrastructure failures. Partial degradation should warn;
+    # a systemic all-source retry failure should still turn the workflow red.
     assert "Report remaining source degradation" in health
     assert "Surface remaining retry failures" not in health
     assert "::warning::" in health
-    assert "raise SystemExit" not in health
+    assert 'if failed and not summary.get("partial_success", False):' in health
+    assert "this looks systemic rather than normal source degradation" in health
 
     # The health checkpoint is also a public-data branch. Keep transient runner
     # caches out of it while preserving both catalog and durable state.
