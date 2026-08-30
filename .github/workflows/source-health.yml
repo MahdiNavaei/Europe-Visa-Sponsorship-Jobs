@@ -92,8 +92,8 @@ jobs:
           cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
           cp build/publication/source-registry.latest.json source-registry.latest.json
           git checkout --orphan "market-data-health-${GITHUB_RUN_ID}"
-          # Keep the market-data branch intentionally tiny. The old `git add -A`
-          # also staged runner-local build caches and Python bytecode that happened
+          # Keep the market-data branch intentionally tiny. Catch-all staging used
+          # to include runner-local build caches and Python bytecode that happened
           # to survive the branch switch.
           git read-tree --empty
           git add data/state source-registry.latest.json
