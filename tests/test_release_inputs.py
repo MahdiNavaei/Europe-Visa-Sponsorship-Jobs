@@ -141,3 +141,18 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "git add data/catalog data/state" in daily
     assert "git add -A" not in daily
     assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
+
+    # Source-level provider outages are expected operational degradation, not
+    # GitHub Actions infrastructure failures. The health workflow must persist
+    # evidence and warn without deliberately turning a completed retry batch red.
+    assert "Report remaining source degradation" in health
+    assert "Surface remaining retry failures" not in health
+    assert "::warning::" in health
+    assert "raise SystemExit" not in health
+
+    # The health checkpoint is also a public-data branch. Keep transient runner
+    # caches out of it while preserving both catalog and durable state.
+    assert "git read-tree --empty" in health
+    assert "git add data/state source-registry.latest.json" in health
+    assert "git add data/catalog" in health
+    assert "git add -A" not in health

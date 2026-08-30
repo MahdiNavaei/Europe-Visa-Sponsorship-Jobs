@@ -92,7 +92,14 @@ jobs:
           cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
           cp build/publication/source-registry.latest.json source-registry.latest.json
           git checkout --orphan "market-data-health-${GITHUB_RUN_ID}"
-          git add -A
+          # Keep the market-data branch intentionally tiny. The old `git add -A`
+          # also staged runner-local build caches and Python bytecode that happened
+          # to survive the branch switch.
+          git read-tree --empty
+          git add data/state source-registry.latest.json
+          if [[ -d data/catalog ]]; then
+            git add data/catalog
+          fi
           git commit -m "data: health checkpoint ${GITHUB_RUN_ID}"
           git push --force origin HEAD:market-data
       - name: Upload retry and health evidence
@@ -104,12 +111,24 @@ jobs:
             retry-summary.json
           if-no-files-found: error
           retention-days: 14
-      - name: Surface remaining retry failures
+      - name: Report remaining source degradation
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+
           summary = json.loads(Path("retry-summary.json").read_text())
-          if summary["sources_failed"]:
-              raise SystemExit(f"{summary['sources_failed']} due source retry/retries failed")
+          failed = int(summary.get("sources_failed", 0))
+          if failed:
+              sources = [str(item) for item in summary.get("failed_sources", [])]
+              preview = ", ".join(sources[:20])
+              suffix = f" (+{len(sources) - 20} more)" if len(sources) > 20 else ""
+              print(
+                  f"::warning::{failed} due source retry/retries remain degraded; "
+                  "their state and evidence were persisted for a future retry."
+              )
+              if preview:
+                  print(f"degraded_sources={preview}{suffix}")
+          else:
+              print("All due source retries recovered.")
           PY
