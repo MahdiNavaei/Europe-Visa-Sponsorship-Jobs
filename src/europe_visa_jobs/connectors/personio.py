@@ -1,17 +1,77 @@
 from __future__ import annotations
 
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 from europe_visa_jobs.connectors.base import BaseConnector, ConnectorError
-from europe_visa_jobs.schemas import ATSProvider, NormalizedJob
+from europe_visa_jobs.schemas import ATSProvider, NormalizedJob, SourceConfig
 from europe_visa_jobs.utils import classify_role, html_to_text, infer_country, normalize_whitespace
+
+
+def _personio_domains(source: SourceConfig) -> tuple[str, ...]:
+    """Return likely Personio TLDs while keeping requests on provider-owned hosts."""
+    domains: list[str] = []
+
+    def add(value: str | None) -> None:
+        normalized = (value or "").casefold()
+        if normalized in {"de", "germany"}:
+            domain = "de"
+        elif normalized == "com":
+            domain = "com"
+        else:
+            return
+        if domain not in domains:
+            domains.append(domain)
+
+    add(source.region)
+    metadata_region = source.metadata.get("region") if isinstance(source.metadata, dict) else None
+    add(metadata_region if isinstance(metadata_region, str) else None)
+
+    for value in (source.board_url, source.careers_url, source.api_url):
+        if not value:
+            continue
+        host = (urlsplit(value).hostname or "").casefold().rstrip(".")
+        if host.endswith(".jobs.personio.de"):
+            add("de")
+        elif host.endswith(".jobs.personio.com"):
+            add("com")
+
+    # Historical discovery rows do not always carry a region. Try both public
+    # Personio domains rather than trusting a stale/custom api_url from an old
+    # archive observation.
+    add("de")
+    add("com")
+    return tuple(domains)
 
 
 class PersonioConnector(BaseConnector):
     async def fetch_jobs(self) -> list[NormalizedJob]:
-        domain = "com" if (self.source.region or "").casefold() == "com" else "de"
-        url = self.endpoint(f"https://{self.source.slug}.jobs.personio.{domain}/xml")
-        response = await self._get(url, params={"language": "en"})
+        response = None
+        domain = "de"
+        first_error: ConnectorError | None = None
+        recoverable_categories = {"not_found", "unsafe_url", "network", "timeout"}
+
+        for candidate_domain in _personio_domains(self.source):
+            # Personio sources are deliberately reconstructed from the verified
+            # board identifier. Do not feed a historical vanity/custom api_url
+            # back into the SSRF allowlist boundary during retries.
+            url = f"https://{self.source.slug}.jobs.personio.{candidate_domain}/xml"
+            try:
+                response = await self._get(url, params={"language": "en"})
+            except ConnectorError as exc:
+                if first_error is None:
+                    first_error = exc
+                if exc.category not in recoverable_categories:
+                    raise
+                continue
+            domain = candidate_domain
+            break
+
+        if response is None:
+            if first_error is not None:
+                raise first_error
+            raise ConnectorError("personio: no provider domain could be resolved", category="network")
+
         try:
             root = ElementTree.fromstring(response.text)
         except ElementTree.ParseError as exc:
