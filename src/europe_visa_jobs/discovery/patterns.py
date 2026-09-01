@@ -109,10 +109,24 @@ def identify_source_url(url: str) -> IdentifiedSource | None:
         if identifier:
             return IdentifiedSource(ATSProvider.WORKABLE, identifier, f"https://apply.workable.com/{identifier}", f"https://apply.workable.com/api/v1/widget/accounts/{identifier}")
 
-    if host.endswith(".jobs.personio.com") or host.endswith(".jobs.personio.de"):
-        identifier = normalize_identifier(host.split(".")[0])
-        if identifier:
-            return IdentifiedSource(ATSProvider.PERSONIO, identifier, f"https://{host}/", f"https://{host}/xml")
+    for domain in ("com", "de"):
+        suffix = f".jobs.personio.{domain}"
+        if host.endswith(suffix):
+            prefix = host[: -len(suffix)]
+            # Valid hosted Personio boards have exactly one tenant label before
+            # jobs.personio.*. Archive noise such as www.tenant.jobs.personio.de
+            # used to be misclassified as a tenant named "www".
+            if not prefix or "." in prefix:
+                return None
+            identifier = normalize_identifier(prefix)
+            if identifier:
+                return IdentifiedSource(
+                    ATSProvider.PERSONIO,
+                    identifier,
+                    f"https://{identifier}.jobs.personio.{domain}/",
+                    f"https://{identifier}.jobs.personio.{domain}/xml",
+                    {"region": domain},
+                )
 
     if host.endswith(".teamtailor.com"):
         identifier = normalize_identifier(host.split(".")[0])
@@ -166,8 +180,30 @@ def identify_config(config: SourceConfig) -> IdentifiedSource:
     if config.provider is ATSProvider.WORKABLE:
         return IdentifiedSource(config.provider, identifier, f"https://apply.workable.com/{identifier}", config.api_url or f"https://apply.workable.com/api/v1/widget/accounts/{identifier}")
     if config.provider is ATSProvider.PERSONIO:
-        domain = "de" if (config.region or "").casefold() in {"de", "germany"} else "com"
-        return IdentifiedSource(config.provider, identifier, f"https://{identifier}.jobs.personio.{domain}/", config.api_url or f"https://{identifier}.jobs.personio.{domain}/xml")
+        domain: str | None = None
+        for value in (config.board_url, config.careers_url, config.api_url):
+            if not value:
+                continue
+            host = (urlsplit(value).hostname or "").casefold().rstrip(".")
+            if host.endswith(".jobs.personio.de"):
+                domain = "de"
+                break
+            if host.endswith(".jobs.personio.com"):
+                domain = "com"
+                break
+        if domain is None:
+            region = config.region
+            if not region and isinstance(config.metadata, dict):
+                metadata_region = config.metadata.get("region")
+                region = metadata_region if isinstance(metadata_region, str) else None
+            domain = "com" if (region or "").casefold() == "com" else "de"
+        return IdentifiedSource(
+            config.provider,
+            identifier,
+            f"https://{identifier}.jobs.personio.{domain}/",
+            f"https://{identifier}.jobs.personio.{domain}/xml",
+            {"region": domain},
+        )
     if config.provider is ATSProvider.TEAMTAILOR:
         return IdentifiedSource(config.provider, identifier, config.board_url or f"https://{identifier}.teamtailor.com/", config.api_url or f"https://{identifier}.teamtailor.com/jobs")
     if config.provider is ATSProvider.RECRUITEE:
