@@ -19,14 +19,14 @@ _SIGNING_SPEC.loader.exec_module(windows_signing_mode)
 
 
 def test_release_version_sources_match():
-    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.1"
+    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.2"
 
 
 def test_release_validation_accepts_the_real_snapshot():
     # The checked-in snapshot is a portable release fallback. Its structure and
     # minimum verified-board count must remain valid even after wall-clock age
     # advances; scheduled runtime workflows use the rolling market-data snapshot.
-    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.1"
+    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.2"
 
 
 def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
@@ -38,7 +38,7 @@ def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
         return {}
 
     monkeypatch.setattr(validate_release_inputs, "validate_registry", fake_validate_registry)
-    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.1"
+    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.2"
     assert called["kwargs"]["require_input_hashes"] is True
 
 
