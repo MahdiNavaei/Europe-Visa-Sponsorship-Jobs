@@ -31,13 +31,33 @@ def _installer_version() -> str:
     return match.group(1)
 
 
+def _validate_web_lock_contract(package: dict, lock: dict) -> None:
+    lock_root = lock.get("packages", {}).get("")
+    if not isinstance(lock_root, dict):
+        raise RuntimeError("web lockfile is missing its root package entry")
+    if lock_root.get("name") != package.get("name"):
+        raise RuntimeError("web lockfile root package name does not match package.json")
+
+    # npm's root package version is descriptive metadata and does not participate
+    # in dependency resolution. Keep the stronger invariant instead: every root
+    # dependency declaration must exactly match package.json. `npm ci` then proves
+    # the complete resolved graph is reproducible without forcing lockfile churn
+    # for a release-only application version bump.
+    for section in ("dependencies", "devDependencies", "optionalDependencies"):
+        expected = package.get(section, {})
+        actual = lock_root.get(section, {})
+        if actual != expected:
+            raise RuntimeError(f"web lockfile {section} do not match package.json")
+
+
 def validate(*, require_snapshot: bool, require_input_hashes: bool = False) -> str:
     backend = _version_from_init()
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
-    web = json.loads((ROOT / "apps/web/package.json").read_text(encoding="utf-8"))["version"]
+    package = json.loads((ROOT / "apps/web/package.json").read_text(encoding="utf-8"))
+    web = package["version"]
     lock = json.loads((ROOT / "apps/web/package-lock.json").read_text(encoding="utf-8"))
-    lock_root = lock["packages"][""]["version"]
-    versions = {"backend": backend, "pyproject": pyproject, "web": web, "web lock": lock_root, "installer": _installer_version()}
+    _validate_web_lock_contract(package, lock)
+    versions = {"backend": backend, "pyproject": pyproject, "web": web, "installer": _installer_version()}
     if len(set(versions.values())) != 1:
         detail = ", ".join(f"{key}={value}" for key, value in versions.items())
         raise RuntimeError(f"release version mismatch: {detail}")
