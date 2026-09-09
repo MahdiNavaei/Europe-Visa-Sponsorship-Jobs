@@ -45,7 +45,7 @@ def validate(*, require_snapshot: bool, require_input_hashes: bool = False) -> s
         snapshot_path = ROOT / "config/source-registry.snapshot.json"
         if not snapshot_path.is_file():
             raise RuntimeError("release registry snapshot is missing")
-        validate_snapshot(json.loads(snapshot_path.read_text(encoding="utf-8")), minimum_verified=500)
+        validate_snapshot(json.loads(snapshot_path.read_text(encoding="utf-8")), minimum_verified=500, maximum_age=None)
     if require_input_hashes:
         validate_registry(
             ROOT / "data/sponsors.csv.gz",

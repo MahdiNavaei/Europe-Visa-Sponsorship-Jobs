@@ -23,6 +23,9 @@ def test_release_version_sources_match():
 
 
 def test_release_validation_accepts_the_real_snapshot():
+    # The checked-in snapshot is a portable release fallback. Its structure and
+    # minimum verified-board count must remain valid even after wall-clock age
+    # advances; scheduled runtime workflows use the rolling market-data snapshot.
     assert validate_release_inputs.validate(require_snapshot=True) == "1.2.1"
 
 

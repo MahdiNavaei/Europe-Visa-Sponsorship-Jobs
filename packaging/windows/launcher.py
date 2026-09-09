@@ -345,7 +345,7 @@ def refresh_jobs(data_dir: Path) -> None:
             # A release package must include this generated artifact.  It is
             # validated for 500+ live boards before import, so first launch is
             # useful without starting a web-scale crawl.
-            for config in load_sources(snapshot, minimum_snapshot_sources=500):
+            for config in load_sources(snapshot, minimum_snapshot_sources=500, maximum_snapshot_age=None):
                 registry.import_verified_snapshot(config)
             for config in load_sources(sources):
                 registry.import_config(config.model_copy(update={"manual_override": True}))
