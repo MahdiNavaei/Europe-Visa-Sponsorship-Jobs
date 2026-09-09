@@ -37,6 +37,14 @@ jobs:
           else
             echo "BRANCH_BACKED_HEALTH=0" >> "$GITHUB_ENV"
           fi
+          if git cat-file -e origin/market-data:source-registry.latest.json 2>/dev/null; then
+            git show origin/market-data:source-registry.latest.json > build/source-registry.bootstrap.json
+            echo "HEALTH_BOOTSTRAP_SNAPSHOT=build/source-registry.bootstrap.json" >> "$GITHUB_ENV"
+            echo "Using the durable source-discovery publication for health bootstrap"
+          else
+            echo "HEALTH_BOOTSTRAP_SNAPSHOT=config/source-registry.snapshot.json" >> "$GITHUB_ENV"
+            echo "::warning::No rolling source registry publication found; using the checked-in bootstrap snapshot"
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -48,7 +56,7 @@ jobs:
       - name: Prepare registry
         run: |
           alembic upgrade head
-          evj-ingest sources bootstrap --snapshot config/source-registry.snapshot.json --config config/sources.json
+          evj-ingest sources bootstrap --snapshot "$HEALTH_BOOTSTRAP_SNAPSHOT" --config config/sources.json
           evj-ingest sources discover --mode recent --limit 100
       - name: Retry failed sources without deleting prior jobs
         run: evj-ingest sources retry-failed --limit 100 --allow-partial --summary-file retry-summary.json
