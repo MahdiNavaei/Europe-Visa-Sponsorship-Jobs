@@ -37,14 +37,35 @@ jobs:
       - name: Restore durable branch-backed state when no database secret is configured
         shell: bash
         run: |
-          mkdir -p build/catalog-seed
-          git fetch origin market-data || true
+          set -euo pipefail
+          mkdir -p build/catalog-seed build/daily-state
+          bash scripts/fetch_market_data.sh
+          if git show-ref --verify --quiet refs/remotes/origin/market-data; then
+            echo "MARKET_DATA_BASE_SHA=$(git rev-parse refs/remotes/origin/market-data)" >> "$GITHUB_ENV"
+          else
+            echo "MARKET_DATA_BASE_SHA=" >> "$GITHUB_ENV"
+          fi
           if [[ -z "$DATABASE_URL" ]]; then
             echo "DATABASE_URL=sqlite:///$GITHUB_WORKSPACE/build/daily.sqlite" >> "$GITHUB_ENV"
             echo "BRANCH_BACKED_SQLITE=1" >> "$GITHUB_ENV"
-            if git cat-file -e origin/market-data:data/state/daily.sqlite.gz 2>/dev/null; then
+            if git cat-file -e origin/market-data:data/state/daily.sqlite.gz.manifest.json 2>/dev/null; then
+              git show origin/market-data:data/state/daily.sqlite.gz.manifest.json \
+                > build/daily-state/daily.sqlite.gz.manifest.json
+              while IFS= read -r chunk; do
+                git show "origin/market-data:data/state/$chunk" > "build/daily-state/$chunk"
+              done < <(
+                python3 scripts/branch_state_archive.py list-chunks \
+                  --manifest build/daily-state/daily.sqlite.gz.manifest.json
+              )
+              python3 scripts/branch_state_archive.py restore \
+                --manifest build/daily-state/daily.sqlite.gz.manifest.json \
+                --output build/daily.sqlite
+              echo "Restored chunked durable SQLite ingestion state from market-data"
+            elif git cat-file -e origin/market-data:data/state/daily.sqlite.gz 2>/dev/null; then
+              # One-release migration path from the legacy single blob. The next
+              # successful publication rewrites it as checksum-verified chunks.
               git show origin/market-data:data/state/daily.sqlite.gz | gzip -dc > build/daily.sqlite
-              echo "Restored durable SQLite ingestion state from market-data"
+              echo "Restored legacy SQLite state; this run will migrate it to chunks"
             else
               echo "No prior SQLite state; this run will bootstrap it"
             fi
@@ -185,12 +206,18 @@ jobs:
               session.commit()
           engine.dispose()
           PY
-          gzip -9 -c build/publication/daily-public.sqlite > build/publication/data/state/daily.sqlite.gz
-          test -s build/publication/data/state/daily.sqlite.gz
+          python scripts/branch_state_archive.py pack \
+            --input build/publication/daily-public.sqlite \
+            --output-dir build/publication/data/state \
+            --prefix daily.sqlite.gz \
+            --chunk-size-mib 48
+          test -s build/publication/data/state/daily.sqlite.gz.manifest.json
+          test -n "$(find build/publication/data/state -name 'daily.sqlite.gz.part-*' -type f -print -quit)"
 
       - name: Persist catalog and state atomically on market-data branch
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "career-radar-bot"
           git config user.email "career-radar-bot@users.noreply.github.com"
           if git show-ref --verify --quiet refs/remotes/origin/market-data; then
@@ -201,8 +228,16 @@ jobs:
           fi
           mkdir -p data/catalog data/state
           cp build/publication/data/catalog/* data/catalog/
+          # Every market-data writer must preserve the same shared durable payload.
+          # Publishing only catalog/state here used to erase the rolling registry on
+          # every hourly run, recreating the stale-bootstrap class of failure.
+          cp build/source-registry.latest.json source-registry.latest.json
           if [[ "$BRANCH_BACKED_SQLITE" == "1" ]]; then
-            cp build/publication/data/state/daily.sqlite.gz data/state/daily.sqlite.gz
+            rm -f data/state/daily.sqlite.gz \
+              data/state/daily.sqlite.gz.manifest.json \
+              data/state/daily.sqlite.gz.part-*
+            cp build/publication/data/state/daily.sqlite.gz.manifest.json data/state/
+            cp build/publication/data/state/daily.sqlite.gz.part-* data/state/
           fi
           python - <<'PY'
           from pathlib import Path
@@ -219,10 +254,18 @@ jobs:
           # deleting working-tree files before selecting the public payload.
           git read-tree --empty
           # Keep runner-local build databases and generated diagnostics out of the
-          # public data branch; only the catalog and durable state are published.
-          git add data/catalog data/state
+          # public data branch; only the shared registry, catalog, and durable state
+          # are published.
+          git add source-registry.latest.json data/catalog data/state
+          unexpected=$(git ls-files | grep -Ev '^(source-registry\.latest\.json|data/(catalog|state)/)' || true)
+          if [[ -n "$unexpected" ]]; then
+            echo "::error::Refusing to publish unexpected market-data paths:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
           git commit -m "data: publish catalog ${GITHUB_RUN_ID}"
-          git push --force origin HEAD:market-data
+          git push --force-with-lease="refs/heads/market-data:${MARKET_DATA_BASE_SHA}" \
+            origin HEAD:market-data
 
       - name: Report upstream source failures after durable publication
         shell: bash

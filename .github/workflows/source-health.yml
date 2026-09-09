@@ -26,8 +26,14 @@ jobs:
       - name: Restore durable branch-backed health state when no database secret is configured
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build
-          git fetch origin market-data || true
+          bash scripts/fetch_market_data.sh
+          if git show-ref --verify --quiet refs/remotes/origin/market-data; then
+            echo "MARKET_DATA_BASE_SHA=$(git rev-parse refs/remotes/origin/market-data)" >> "$GITHUB_ENV"
+          else
+            echo "MARKET_DATA_BASE_SHA=" >> "$GITHUB_ENV"
+          fi
           if [[ -z "$DATABASE_URL" ]]; then
             echo "DATABASE_URL=sqlite:///$GITHUB_WORKSPACE/build/discovery.sqlite" >> "$GITHUB_ENV"
             echo "BRANCH_BACKED_HEALTH=1" >> "$GITHUB_ENV"
@@ -68,6 +74,7 @@ jobs:
         if: env.BRANCH_BACKED_HEALTH == '1'
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build/publication/data/state
           cp build/discovery.sqlite build/publication/discovery-public.sqlite
           python - <<'PY'
@@ -108,8 +115,15 @@ jobs:
           if [[ -d data/catalog ]]; then
             git add data/catalog
           fi
+          unexpected=$(git ls-files | grep -Ev '^(source-registry\.latest\.json|data/)' || true)
+          if [[ -n "$unexpected" ]]; then
+            echo "::error::Refusing to publish unexpected market-data paths:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
           git commit -m "data: health checkpoint ${GITHUB_RUN_ID}"
-          git push --force origin HEAD:market-data
+          git push --force-with-lease="refs/heads/market-data:${MARKET_DATA_BASE_SHA}" \
+            origin HEAD:market-data
       - name: Upload retry and health evidence
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

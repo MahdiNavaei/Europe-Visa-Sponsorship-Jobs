@@ -38,8 +38,14 @@ jobs:
       - name: Restore durable branch-backed discovery state when no database secret is configured
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build
-          git fetch origin market-data || true
+          bash scripts/fetch_market_data.sh
+          if git show-ref --verify --quiet refs/remotes/origin/market-data; then
+            echo "MARKET_DATA_BASE_SHA=$(git rev-parse refs/remotes/origin/market-data)" >> "$GITHUB_ENV"
+          else
+            echo "MARKET_DATA_BASE_SHA=" >> "$GITHUB_ENV"
+          fi
           if [[ -z "$DATABASE_URL" ]]; then
             echo "DATABASE_URL=sqlite:///$GITHUB_WORKSPACE/build/discovery.sqlite" >> "$GITHUB_ENV"
             echo "BRANCH_BACKED_DISCOVERY=1" >> "$GITHUB_ENV"
@@ -106,6 +112,7 @@ jobs:
       - name: Persist source registry on market-data branch
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "career-radar-bot"
           git config user.email "career-radar-bot@users.noreply.github.com"
           if git show-ref --verify --quiet refs/remotes/origin/market-data; then
@@ -120,6 +127,21 @@ jobs:
             cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
           fi
           git checkout --orphan "market-data-discovery-${GITHUB_RUN_ID}"
-          git add -A
+          # Source discovery previously used catch-all staging after leaving main,
+          # where .gitignore was no longer present. That silently published runner
+          # build trees and Python caches. Start from an empty index and allowlist
+          # only durable public data plus the rolling registry.
+          git read-tree --empty
+          git add source-registry.latest.json
+          if [[ -d data ]]; then
+            git add data
+          fi
+          unexpected=$(git ls-files | grep -Ev '^(source-registry\.latest\.json|data/)' || true)
+          if [[ -n "$unexpected" ]]; then
+            echo "::error::Refusing to publish unexpected market-data paths:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
           git commit -m "data: publish verified source registry ${GITHUB_RUN_ID}"
-          git push --force origin HEAD:market-data
+          git push --force-with-lease="refs/heads/market-data:${MARKET_DATA_BASE_SHA}" \
+            origin HEAD:market-data

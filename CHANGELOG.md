@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3 - 2026-09-09
+
+- Replaced the near-limit branch-backed daily SQLite blob with checksum-verified 48 MiB chunks and a manifest, including automatic migration from the legacy single blob.
+- Fixed source discovery so its orphan `market-data` publications can no longer stage runner build trees, caches, source files, or tests.
+- Fixed the hourly catalog writer so rewriting `market-data` preserves `source-registry.latest.json` instead of dropping the rolling source registry required by later health/discovery/bootstrap runs.
+- Replaced silent `market-data` fetch fallback with retrying, explicit remote-state checks across catalog, discovery, and health writers.
+- Added exact-SHA force-with-lease publication guards and regression coverage for state integrity, shared-registry preservation, and publication allowlists.
+
 ## 1.2.2 - 2026-09-09
 
 - Fixed Source health retry to bootstrap from the rolling market-data registry instead of an aging checked-in snapshot.

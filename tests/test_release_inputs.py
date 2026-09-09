@@ -19,14 +19,14 @@ _SIGNING_SPEC.loader.exec_module(windows_signing_mode)
 
 
 def test_release_version_sources_match():
-    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.2"
+    assert validate_release_inputs.validate(require_snapshot=False) == "1.2.3"
 
 
 def test_release_validation_accepts_the_real_snapshot():
     # The checked-in snapshot is a portable release fallback. Its structure and
     # minimum verified-board count must remain valid even after wall-clock age
     # advances; scheduled runtime workflows use the rolling market-data snapshot.
-    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.2"
+    assert validate_release_inputs.validate(require_snapshot=True) == "1.2.3"
 
 
 def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
@@ -38,7 +38,7 @@ def test_release_validation_can_require_sponsor_provenance_hashes(monkeypatch):
         return {}
 
     monkeypatch.setattr(validate_release_inputs, "validate_registry", fake_validate_registry)
-    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.2"
+    assert validate_release_inputs.validate(require_snapshot=False, require_input_hashes=True) == "1.2.3"
     assert called["kwargs"]["require_input_hashes"] is True
 
 
@@ -141,9 +141,17 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert worst_case_hours <= 25
 
     assert "git read-tree --empty" in daily
-    assert "git add data/catalog data/state" in daily
+    assert "git add source-registry.latest.json data/catalog data/state" in daily
     assert "git add -A" not in daily
     assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
+
+    # Source discovery writes the same public branch and must keep the exact same
+    # allowlist discipline. This closes the gap that let runner build trees leak
+    # into market-data even while daily and health publication tests stayed green.
+    assert "git read-tree --empty" in discovery
+    assert "git add source-registry.latest.json" in discovery
+    assert "git add data" in discovery
+    assert "git add -A" not in discovery
 
     # Provider/source outages are health evidence, not runner failures. Even an
     # all-failed retry batch must stay a warning after the preceding persistence
