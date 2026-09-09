@@ -24,10 +24,9 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # The 3k+ verified-source registry can spend close to an hour on network
-    # I/O at the conservative library default. Keep a publication safety margin
-    # while the workflow-level concurrency below reduces normal runtime well
-    # below the hourly cadence.
+    # Keep a hard publication margin. The ingestion command itself has a
+    # smaller wall-clock budget below so a slow 3k+ source batch can never
+    # consume the whole job and skip durable state publication again.
     timeout-minutes: 75
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -172,8 +171,49 @@ jobs:
           evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
-      - name: Ingest a fair durable refresh batch
-        run: evj-ingest jobs --registry --due-for-refresh --limit "$INGESTION_BATCH_SIZE" --allow-partial --summary-file build/ingestion-summary.json
+      - name: Initialize durable ingestion summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path("build/ingestion-summary.json")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          summary = {
+              "selection_mode": "due_for_refresh",
+              "refresh_interval_hours": int(os.environ["INGESTION_REFRESH_INTERVAL_HOURS"]),
+              "sources_total": int(os.environ["INGESTION_BATCH_SIZE"]),
+              "sources_successful": 0,
+              "sources_failed": 0,
+              "failed_sources": [],
+              "partial_success": False,
+          }
+          output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Ingest a fair durable refresh batch within publication budget
+        id: ingest_batch
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          timeout --signal=TERM --kill-after=30s 40m \
+            evj-ingest jobs --registry --due-for-refresh \
+              --limit "$INGESTION_BATCH_SIZE" \
+              --allow-partial \
+              --summary-file build/ingestion-summary.json
+          status=$?
+          set -e
+          if [[ "$status" -eq 124 || "$status" -eq 137 || "$status" -eq 143 ]]; then
+            echo "::warning::Ingestion reached its 40-minute publication budget; completed SQLite commits will still be published and remaining due sources will be retried next run."
+            echo "INGESTION_BUDGET_EXHAUSTED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [[ "$status" -ne 0 ]]; then
+            exit "$status"
+          fi
+          echo "INGESTION_BUDGET_EXHAUSTED=0" >> "$GITHUB_ENV"
 
       - name: Report persisted ingestion result
         run: |
@@ -282,11 +322,27 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
+
           summary = json.loads(Path("build/ingestion-summary.json").read_text())
           print(json.dumps(summary, indent=2))
-          if summary["sources_failed"] and not summary["partial_success"]:
-              raise SystemExit(f"{summary['sources_failed']} source(s) failed and no healthy source data was published")
-          if summary["sources_failed"]:
-              print(f"::warning::{summary['sources_failed']} source(s) failed; healthy data and state were still published")
+          failed = int(summary.get("sources_failed", 0))
+          successful = int(summary.get("sources_successful", 0))
+          total = int(summary.get("sources_total", 0))
+          processed = successful + failed
+          budget_exhausted = os.environ.get("INGESTION_BUDGET_EXHAUSTED") == "1"
+
+          if budget_exhausted:
+              print(
+                  "::warning::The ingestion wall-clock budget was exhausted, but durable "
+                  "SQLite/catalog publication completed; unfinished due sources remain "
+                  "eligible for the next hourly run."
+              )
+          if failed and not summary.get("partial_success") and not budget_exhausted:
+              raise SystemExit(f"{failed} source(s) failed and no healthy source data was published")
+          if failed:
+              print(f"::warning::{failed} source(s) failed; healthy data and state were still published")
+          if budget_exhausted and processed < total:
+              print(f"::notice::At least {total - processed} selected source(s) were not reflected in the final batch summary before the process budget ended.")
           PY
