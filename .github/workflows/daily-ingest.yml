@@ -7,6 +7,12 @@ on:
     # it can be met inside the runner-safe batch cap.
     - cron: "17 * * * *"
   workflow_dispatch:
+  # Workflow edits should exercise the production path immediately instead of
+  # waiting for the next cron tick. This is intentionally scoped to this file.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/daily-ingest.yml"
 
 permissions:
   contents: write
@@ -18,12 +24,16 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # Durable publication processes a bounded registry batch on each run and
-    # resumes the remaining verified boards from branch-backed state.
-    timeout-minutes: 60
+    # The 3k+ verified-source registry can spend close to an hour on network
+    # I/O at the conservative library default. Keep a publication safety margin
+    # while the workflow-level concurrency below reduces normal runtime well
+    # below the hourly cadence.
+    timeout-minutes: 75
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PYTHONPATH: src:.
+      REQUEST_TIMEOUT_SECONDS: "15"
+      INGESTION_CONCURRENCY: "12"
       INGESTION_REFRESH_INTERVAL_HOURS: "18"
       INGESTION_REFRESH_STALE_SHARE: "0.75"
       INGESTION_MIN_BATCH_SIZE: "150"
