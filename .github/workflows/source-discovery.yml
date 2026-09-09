@@ -127,10 +127,10 @@ jobs:
             cp build/publication/data/state/discovery.sqlite.gz data/state/discovery.sqlite.gz
           fi
           git checkout --orphan "market-data-discovery-${GITHUB_RUN_ID}"
-          # Source discovery previously used `git add -A` after leaving main, where
-          # .gitignore was no longer present. That silently published runner build
-          # trees and Python caches. Start from an empty index and allowlist only
-          # durable public data plus the rolling registry.
+          # Source discovery previously used catch-all staging after leaving main,
+          # where .gitignore was no longer present. That silently published runner
+          # build trees and Python caches. Start from an empty index and allowlist
+          # only durable public data plus the rolling registry.
           git read-tree --empty
           git add source-registry.latest.json
           if [[ -d data ]]; then
