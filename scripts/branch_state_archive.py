@@ -52,15 +52,18 @@ def pack_archive(
     temp_archive.unlink(missing_ok=True)
 
     try:
-        with source.open("rb") as source_handle, temp_archive.open("wb") as raw_handle:
-            with gzip.GzipFile(
+        with (
+            source.open("rb") as source_handle,
+            temp_archive.open("wb") as raw_handle,
+            gzip.GzipFile(
                 filename="",
                 mode="wb",
                 compresslevel=9,
                 fileobj=raw_handle,
                 mtime=0,
-            ) as compressed:
-                shutil.copyfileobj(source_handle, compressed, length=_COPY_BUFFER)
+            ) as compressed,
+        ):
+            shutil.copyfileobj(source_handle, compressed, length=_COPY_BUFFER)
 
         chunks: list[dict[str, Any]] = []
         with temp_archive.open("rb") as archive_handle:
