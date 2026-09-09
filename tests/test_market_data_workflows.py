@@ -18,6 +18,19 @@ def test_all_market_data_writers_use_retrying_fetch_and_lease_protection():
         assert "git fetch origin market-data || true" not in workflow
 
 
+def test_every_market_data_writer_preserves_the_rolling_registry():
+    for name in ("daily-ingest.yml", "source-discovery.yml", "source-health.yml"):
+        workflow = _workflow(name)
+        assert "source-registry.latest.json" in workflow
+        assert "git add source-registry.latest.json" in workflow or (
+            "git add data/state source-registry.latest.json" in workflow
+        )
+
+    daily = _workflow("daily-ingest.yml")
+    assert "cp build/source-registry.latest.json source-registry.latest.json" in daily
+    assert "git add source-registry.latest.json data/catalog data/state" in daily
+
+
 def test_source_discovery_publishes_only_public_data_allowlist():
     workflow = _workflow("source-discovery.yml")
     assert "git read-tree --empty" in workflow
