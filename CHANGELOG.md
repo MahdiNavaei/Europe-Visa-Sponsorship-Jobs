@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 - 2026-09-09
+
+- Fixed Source health retry to bootstrap from the rolling market-data registry instead of an aging checked-in snapshot.
+- Kept strict freshness checks for live snapshots while making validated packaged/offline fallbacks age-independent.
+- Hardened Windows fallback packaging and refreshed vulnerable frontend lockfile dependencies.
+- Added regression coverage for source-health bootstrap and snapshot freshness semantics.
+
 ## 1.2.1 — 2026-08-27
 
 - Fix the recommendation-score scale bug that underweighted positive visa/sponsorship
