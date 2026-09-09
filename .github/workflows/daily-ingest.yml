@@ -228,6 +228,10 @@ jobs:
           fi
           mkdir -p data/catalog data/state
           cp build/publication/data/catalog/* data/catalog/
+          # Every market-data writer must preserve the same shared durable payload.
+          # Publishing only catalog/state here used to erase the rolling registry on
+          # every hourly run, recreating the stale-bootstrap class of failure.
+          cp build/source-registry.latest.json source-registry.latest.json
           if [[ "$BRANCH_BACKED_SQLITE" == "1" ]]; then
             rm -f data/state/daily.sqlite.gz \
               data/state/daily.sqlite.gz.manifest.json \
@@ -250,9 +254,10 @@ jobs:
           # deleting working-tree files before selecting the public payload.
           git read-tree --empty
           # Keep runner-local build databases and generated diagnostics out of the
-          # public data branch; only the catalog and durable state are published.
-          git add data/catalog data/state
-          unexpected=$(git ls-files | grep -Ev '^data/(catalog|state)/' || true)
+          # public data branch; only the shared registry, catalog, and durable state
+          # are published.
+          git add source-registry.latest.json data/catalog data/state
+          unexpected=$(git ls-files | grep -Ev '^(source-registry\.latest\.json|data/(catalog|state)/)' || true)
           if [[ -n "$unexpected" ]]; then
             echo "::error::Refusing to publish unexpected market-data paths:"
             printf '%s\n' "$unexpected"
