@@ -108,7 +108,14 @@ def test_snapshot_bootstrap_preserves_verified_state(db_session):
 
 
 def test_production_snapshot_bootstraps_full_verified_registry_from_empty_db(db_session):
-    configs = load_sources("config/source-registry.snapshot.json", minimum_snapshot_sources=500)
+    # This test proves that the checked-in release bootstrap remains structurally
+    # usable even after its release-time freshness window expires. Live workflows
+    # and release packaging validate freshness separately against market-data.
+    configs = load_sources(
+        "config/source-registry.snapshot.json",
+        minimum_snapshot_sources=500,
+        maximum_snapshot_age=None,
+    )
     registry = SourceRegistry(db_session)
     for config in configs:
         registry.import_verified_snapshot(config)
