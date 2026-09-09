@@ -141,7 +141,7 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert worst_case_hours <= 25
 
     assert "git read-tree --empty" in daily
-    assert "git add data/catalog data/state" in daily
+    assert "git add source-registry.latest.json data/catalog data/state" in daily
     assert "git add -A" not in daily
     assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
 
