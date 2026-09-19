@@ -13,6 +13,9 @@ on:
         description: Maximum candidates to validate
         required: false
         default: "250"
+  push:
+    branches: [main]
+    paths: [".github/workflows/source-discovery.yml"]
   schedule:
     - cron: "17 3 * * *"
 
@@ -73,7 +76,7 @@ jobs:
       - name: Migrate and bootstrap registry
         run: |
           alembic upgrade head
-          evj-ingest sources bootstrap --snapshot "$DISCOVERY_BOOTSTRAP_SNAPSHOT" --config config/sources.json
+          evj-ingest sources bootstrap --snapshot "$DISCOVERY_BOOTSTRAP_SNAPSHOT" --allow-stale-snapshot --config config/sources.json
       - name: Discover and validate public ATS boards
         env:
           DISCOVERY_MODE: ${{ inputs.mode || 'recent' }}
