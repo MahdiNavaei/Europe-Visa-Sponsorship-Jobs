@@ -144,7 +144,7 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "git read-tree --empty" in daily
     assert "git add source-registry.latest.json data/catalog data/state" in daily
     assert "git add -A" not in daily
-    assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
+    assert 'if failed and not summary.get("partial_success") and not budget_exhausted:' in daily
 
     # Source discovery writes the same public branch and must keep the exact same
     # allowlist discipline. This closes the gap that let runner build trees leak
