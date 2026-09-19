@@ -13,7 +13,7 @@ from europe_visa_jobs.db.locking import database_write_lock
 from europe_visa_jobs.db.session import SessionLocal, init_db
 from europe_visa_jobs.db.source_registry import SourceRegistry
 from europe_visa_jobs.discovery.orchestrator import discover_and_validate
-from europe_visa_jobs.discovery.snapshot import build_snapshot
+from europe_visa_jobs.discovery.snapshot import DEFAULT_MAX_SNAPSHOT_AGE, build_snapshot
 from europe_visa_jobs.ingestion.pipeline import ingest_source
 from europe_visa_jobs.ingestion.sources import load_sources
 from europe_visa_jobs.ingestion.sponsors import (
@@ -48,6 +48,11 @@ def _parser() -> argparse.ArgumentParser:
     bootstrap = source_commands.add_parser("bootstrap", help="Import static seeds as manual registry entries")
     bootstrap.add_argument("--config", default="config/sources.json")
     bootstrap.add_argument("--snapshot", help="Verified registry snapshot to import before manual seeds")
+    bootstrap.add_argument(
+        "--allow-stale-snapshot",
+        action="store_true",
+        help="Restore historically verified sources for recovery without claiming their health evidence is fresh",
+    )
     snapshot = source_commands.add_parser("snapshot", help="Export the verified registry as a packaged bootstrap artifact")
     snapshot.add_argument("--output", default="config/source-registry.snapshot.json")
     snapshot.add_argument("--minimum-verified", type=int, default=500)
@@ -242,7 +247,11 @@ def _run(args: argparse.Namespace) -> None:
             with SessionLocal() as session:
                 registry = SourceRegistry(session)
                 if args.snapshot:
-                    for config in load_sources(args.snapshot, minimum_snapshot_sources=500):
+                    for config in load_sources(
+                        args.snapshot,
+                        minimum_snapshot_sources=500,
+                        maximum_snapshot_age=None if args.allow_stale_snapshot else DEFAULT_MAX_SNAPSHOT_AGE,
+                    ):
                         registry.import_verified_snapshot(config)
                 configs = load_sources(args.config)
                 for config in configs:
