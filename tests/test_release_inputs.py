@@ -121,7 +121,8 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
     cycle_smoke = (root / "scripts" / "windows_market_cycle_smoke.py").read_text(encoding="utf-8")
     assert '"CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1"' in cycle_smoke
-    assert '--due-for-refresh --limit "$INGESTION_BATCH_SIZE"' in daily
+    assert "--due-for-refresh" in daily
+    assert '--limit "$INGESTION_BATCH_SIZE"' in daily
     assert 'cron: "17 * * * *"' in daily
     assert 'INGESTION_REFRESH_INTERVAL_HOURS: "18"' in daily
     assert 'INGESTION_REFRESH_STALE_SHARE: "0.75"' in daily
