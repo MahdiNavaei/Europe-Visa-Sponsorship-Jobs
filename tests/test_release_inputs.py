@@ -121,7 +121,8 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert 'CAREERRADAR_SMOKE_BOUNDED_CATALOG' in windows
     cycle_smoke = (root / "scripts" / "windows_market_cycle_smoke.py").read_text(encoding="utf-8")
     assert '"CAREERRADAR_SMOKE_BOUNDED_CATALOG": "1"' in cycle_smoke
-    assert '--due-for-refresh --limit "$INGESTION_BATCH_SIZE"' in daily
+    assert "--due-for-refresh" in daily
+    assert '--limit "$INGESTION_BATCH_SIZE"' in daily
     assert 'cron: "17 * * * *"' in daily
     assert 'INGESTION_REFRESH_INTERVAL_HOURS: "18"' in daily
     assert 'INGESTION_REFRESH_STALE_SHARE: "0.75"' in daily
@@ -143,7 +144,7 @@ def test_scheduled_workflows_use_durable_source_state_and_compressed_sponsors():
     assert "git read-tree --empty" in daily
     assert "git add source-registry.latest.json data/catalog data/state" in daily
     assert "git add -A" not in daily
-    assert "summary[\"sources_failed\"] and not summary[\"partial_success\"]" in daily
+    assert 'if failed and not summary.get("partial_success") and not budget_exhausted:' in daily
 
     # Source discovery writes the same public branch and must keep the exact same
     # allowlist discipline. This closes the gap that let runner build trees leak

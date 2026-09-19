@@ -2,6 +2,9 @@ name: Source health retry
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/source-health.yml"]
   schedule:
     - cron: "47 */6 * * *"
 
@@ -62,7 +65,7 @@ jobs:
       - name: Prepare registry
         run: |
           alembic upgrade head
-          evj-ingest sources bootstrap --snapshot "$HEALTH_BOOTSTRAP_SNAPSHOT" --config config/sources.json
+          evj-ingest sources bootstrap --snapshot "$HEALTH_BOOTSTRAP_SNAPSHOT" --allow-stale-snapshot --config config/sources.json
           evj-ingest sources discover --mode recent --limit 100
       - name: Retry failed sources without deleting prior jobs
         run: evj-ingest sources retry-failed --limit 100 --allow-partial --summary-file retry-summary.json

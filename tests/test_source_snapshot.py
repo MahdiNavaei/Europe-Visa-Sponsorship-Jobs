@@ -80,6 +80,55 @@ def test_snapshot_rejects_stale_or_future_generation(db_session):
         validate_snapshot(payload, minimum_verified=1, now=now)
 
 
+
+
+def test_stale_board_health_can_be_restored_only_in_recovery_mode(db_session, tmp_path):
+    registry = SourceRegistry(db_session)
+    source = _verified_source(registry)
+    old = datetime.now(UTC) - timedelta(days=20)
+    source.last_success_at = old
+    source.last_checked_at = old
+    db_session.commit()
+
+    payload = build_snapshot([source])
+    # A newly exported rolling registry can still contain individually stale
+    # boards. This formerly halted all three scheduled recovery pipelines.
+    payload["generated_at"] = datetime.now(UTC).isoformat()
+    path = tmp_path / "stale-rolling-registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SnapshotValidationError, match="stale health evidence"):
+        load_sources(path, minimum_snapshot_sources=1)
+
+    restored = load_sources(
+        path, minimum_snapshot_sources=1, maximum_snapshot_age=None
+    )
+    assert len(restored) == 1
+    assert restored[0].metadata["snapshot_health"]["last_success_at"] == old.isoformat()
+
+    # Recovery never rewrites historical evidence to now or bypasses structural
+    # integrity, verified-state, or future-timestamp validation.
+    payload["sources"][0]["metadata"]["snapshot_health"]["last_success_at"] = (
+        datetime.now(UTC) + timedelta(hours=2)
+    ).isoformat()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(SnapshotValidationError, match="future validation time"):
+        load_sources(path, minimum_snapshot_sources=1, maximum_snapshot_age=None)
+
+
+def test_stale_generation_can_be_recovered_without_weakening_default_validation(db_session, tmp_path):
+    registry = SourceRegistry(db_session)
+    _verified_source(registry)
+    payload = build_snapshot(registry.list_sources(verified_only=True))
+    payload["generated_at"] = (datetime.now(UTC) - timedelta(days=20)).isoformat()
+    path = tmp_path / "old-rolling-registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SnapshotValidationError, match="registry snapshot is stale"):
+        load_sources(path, minimum_snapshot_sources=1)
+    assert len(load_sources(path, minimum_snapshot_sources=1, maximum_snapshot_age=None)) == 1
+
+
 def test_snapshot_excludes_historically_verified_sources_no_longer_current(db_session):
     registry = SourceRegistry(db_session)
     source = _verified_source(registry)

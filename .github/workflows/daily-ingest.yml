@@ -113,7 +113,13 @@ jobs:
 
           from europe_visa_jobs.ingestion.sources import load_sources
 
-          sources = load_sources("build/source-registry.latest.json", minimum_snapshot_sources=500)
+          # A stale board must not block recovery; original validation timestamps
+          # remain intact and actual ATS freshness is updated by ingestion.
+          sources = load_sources(
+              "build/source-registry.latest.json",
+              minimum_snapshot_sources=500,
+              maximum_snapshot_age=None,
+          )
           assert all("example" not in source.slug.lower() for source in sources)
 
           source_count = len(sources)
@@ -155,7 +161,7 @@ jobs:
               env_file.write(f"INGESTION_BATCH_SIZE={batch_size}\n")
 
           print(
-              f"validated {source_count} live ATS sources; planned batch={batch_size}, "
+              f"loaded {source_count} historically verified ATS sources; planned batch={batch_size}, "
               f"recurring slots/run={recurring_slots}, bounded revisit≈{worst_case_hours}h"
           )
           PY
@@ -168,7 +174,7 @@ jobs:
 
       - name: Bootstrap and validate priority seeds
         run: |
-          evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --config config/sources.json
+          evj-ingest sources bootstrap --snapshot build/source-registry.latest.json --allow-stale-snapshot --config config/sources.json
           evj-ingest sources discover --mode recent --method manual --limit 100
 
       - name: Initialize durable ingestion summary
