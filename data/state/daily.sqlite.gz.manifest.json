@@ -1,0 +1,35 @@
+{
+  "archive_sha256": "e5211ae118e8ddfa58d8467925ac03b7d62f45e0692f9044f372a6e219f86b53",
+  "archive_size": 207727025,
+  "chunk_size": 50331648,
+  "chunks": [
+    {
+      "name": "daily.sqlite.gz.part-000",
+      "sha256": "47899e284d013d96d08c32bfaeb47780a127d079e0c958faea99f7a9f898d039",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-001",
+      "sha256": "b297157a7d5d8dc8502bb4ba6e0869ab2021d1e62d31cfa81564161284ea0801",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-002",
+      "sha256": "9e37410f0bb108ea1beed282b56787f3c8d7ae899d59f48bb4c22a605fc620fc",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-003",
+      "sha256": "25c60877d3d4c8b8a15d72e760e0149f2ccf792e5582fe78d8ecd2ddabd54ab0",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-004",
+      "sha256": "93e549f0240266c4c49ed301ffc8d09a445b0b46aba42b0fbe7c2402b796b99d",
+      "size": 6400433
+    }
+  ],
+  "compression": "gzip",
+  "format": "career-radar-branch-state-v1",
+  "source_size": 1276846080
+}
