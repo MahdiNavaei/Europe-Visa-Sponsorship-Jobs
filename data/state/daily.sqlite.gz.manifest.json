@@ -1,0 +1,35 @@
+{
+  "archive_sha256": "e8bcccd0114fb64110e6b603da888454f029c325537b9c154adf88f07076c9b0",
+  "archive_size": 243038947,
+  "chunk_size": 50331648,
+  "chunks": [
+    {
+      "name": "daily.sqlite.gz.part-000",
+      "sha256": "7b71ec1f086086013bbe6f2633b2952f888013bda99f8245fe2da6aab5df3368",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-001",
+      "sha256": "f2cae29f6cd5f19555faa253cd139fdada6a9c94ed991dc1f74fb5bbf8f5b660",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-002",
+      "sha256": "75c03efb8c04f3880c92b06e5f87a0b2b78fe352bb5fefe187c10fadb39c4907",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-003",
+      "sha256": "35bca63f91efa2687f60754afb6a18425c9b408337267eff36a7effb36ed8e53",
+      "size": 50331648
+    },
+    {
+      "name": "daily.sqlite.gz.part-004",
+      "sha256": "bd3815655dda800c58bce523a0f785567c310191ab53363fd4062129ecd64fb9",
+      "size": 41712355
+    }
+  ],
+  "compression": "gzip",
+  "format": "career-radar-branch-state-v1",
+  "source_size": 1459499008
+}
