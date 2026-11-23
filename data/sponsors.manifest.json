@@ -1,21 +1,21 @@
 {
   "country_counts": {
-    "Netherlands": 12925,
-    "United Kingdom": 125473
+    "Netherlands": 13079,
+    "United Kingdom": 125583
   },
-  "dataset_sha256": "aee454c84157cd3e19779369470c8a99e2d28a4e757ba17f770d95a61491a205",
+  "dataset_sha256": "cd90a53abea7264e1ca9dc65f465116d86f8f212fc90f141fdee00bb9585357e",
   "format": "career-radar-sponsor-registry/v1",
-  "generated_at": "2026-08-24T17:44:03.061919Z",
-  "record_count": 138398,
+  "generated_at": "2026-11-23T20:29:54.824461Z",
+  "record_count": 138662,
   "sources": [
     {
-      "input_sha256": "cb4384816a3e0b0c6e395e25d9801eeca07b59f553a90be275acf5ec0bfc338c",
-      "publication_page_sha256": "88b804672b0300ce32f81041e8179cc072ad70fd1792377f3f653cb93e8315d6",
-      "resolved_url": "https://assets.publishing.service.gov.uk/media/6a8c1d5ddba67049905daa17/SP_-_Worker_and_Temporary_Worker_Web_Register_-_2026-08-24.csv",
+      "input_sha256": "7b858a2734ffa6ce5f57b4d42c7811691823ec0e4267d331af048531e6adb494",
+      "publication_page_sha256": "45dfe19e78b8ec92684623862d828d2b4a4bff4bcb5f2cc117acbb09f3b5c3ea",
+      "resolved_url": "https://assets.publishing.service.gov.uk/media/6b04016c7851d12bf3b24652/SP_-_Worker_and_Temporary_Worker_Web_Register_-_2026-11-23.csv",
       "url": "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers"
     },
     {
-      "input_sha256": "44cca4c3c32c83d9f82c0d4642a0013c057c74c50de2444a4af8bd580cf7cbdd",
+      "input_sha256": "7e1f110bbbd67c02032c34e992cfe53a9eba1b330d8d949a7bbb8595edbc94f7",
       "resolved_url": "https://ind.nl/en/public-register-recognised-sponsors/public-register-work",
       "url": "https://ind.nl/en/public-register-recognised-sponsors/public-register-work"
     }
